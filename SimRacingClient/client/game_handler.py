@@ -1,11 +1,11 @@
-from client.utils.focus_window import bring_window_to_focus, is_window_in_focus
-from client.utils.input_blocker import block_input
-from client.utils.game_launcher import launch_game
-from client.utils.game_closer import close_game
+from utils.focus_window import bring_window_to_focus, is_window_in_focus
+from utils.input_blocker import block_input
+from utils.game_launcher import launch_game
+from utils.game_closer import close_game
 import time
 import json
 from pathlib import Path
-from SimRacingClient.utils.screen_navigator import load_and_execute_navigation
+from utils.screen_navigator import load_and_execute_navigation
 
 script_dir = Path(__file__).parent
 config_path = script_dir / "config.json"

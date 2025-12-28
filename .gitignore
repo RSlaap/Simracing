@@ -4,3 +4,5 @@ __pycache__
 Games
 config.json
 templates
+machine_configuration.json
+CLAUDE.md

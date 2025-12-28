@@ -20,7 +20,8 @@ logging.basicConfig(
 logger = logging.getLogger('SimRacingOrchestrator')
 
 class Heartbeat(BaseModel):
-    hostname: str
+    name: str
+    id: int
     status: str
     session_id: Optional[str]
     current_game: Optional[str]
@@ -71,13 +72,16 @@ def auto_register_setup(address, setup_port):
 
 
 def get_online_setups() -> List[tuple]:
-    """Get list of online setups in order (left to right as they appear)"""
+    """Get list of online setups ordered by machine ID (lowest ID first)"""
     online_setups = []
     for setup_id, setup in REGISTERED_SETUPS.items():
         if setup.heartbeat and setup.heartbeat.last_seen:
             is_online = (time.time() - setup.heartbeat.last_seen) < 15
             if is_online:
                 online_setups.append((setup_id, setup))
+
+    # Sort by machine ID (lowest ID first = host)
+    online_setups.sort(key=lambda x: x[1].heartbeat.id)
     return online_setups
 
 
@@ -105,7 +109,7 @@ class SetupListener(ServiceListener):
                 properties = properties
             )
 
-            logger.info(f"[+] Found setup: {properties.get('hostname', 'Unknown')} at {address}:{setup_port}")
+            logger.info(f"[+] Found setup: {properties.get('name', 'Unknown')} at {address}:{setup_port}")
             
             threading.Thread(
                 target=auto_register_setup, 
@@ -143,16 +147,17 @@ def index():
 def receive_heartbeat():
     """Receive heartbeat updates from setups"""
     data = request.json
-    
+
     heartbeat_port = data.get('port', 5000)
     setup_id = f"{data.get('ip')}:{heartbeat_port}"
-    
+
     if setup_id not in REGISTERED_SETUPS:
         logger.warning(f"Received heartbeat from unknown setup: {setup_id}")
         return jsonify({"status": "unknown_setup", "message": f"Setup {setup_id} not found in registry"}), 404
-    
+
     REGISTERED_SETUPS[setup_id].heartbeat = Heartbeat(
-        hostname=data.get('hostname'),
+        name=data.get('name'),
+        id=data.get('id'),
         status=data.get('status'),
         current_game= data.get('current_game'),
         session_id= data.get('session_id'),
@@ -177,7 +182,7 @@ def get_setups():
                 "connected": True,
                 "online": is_online
             }
-            status_str = f"{setup.heartbeat.hostname}: {setup.heartbeat.status} ({'online' if is_online else 'offline'})"
+            status_str = f"{setup.heartbeat.name}: {setup.heartbeat.status} ({'online' if is_online else 'offline'})"
             setup_summary.append(status_str)
         else:
             result[setup_id] = {
@@ -185,8 +190,8 @@ def get_setups():
                 "connected": False,
                 "online": False
             }
-            hostname = setup.properties.get('hostname', 'Unknown')
-            setup_summary.append(f"{hostname}: discovered (not connected)")
+            name = setup.properties.get('name', 'Unknown')
+            setup_summary.append(f"{name}: discovered (not connected)")
     
     if setup_summary:
         logger.info(f"Status request | Found {len(result)} setups | {' | '.join(setup_summary)}")
@@ -202,13 +207,13 @@ def start_all():
     data = request.json
     game = data.get('game')
     num_players = data.get('num_players', 1)
-    
+
     if not game:
         logger.warning("Start request failed: Missing game")
         return jsonify({"error": "Missing required field: game"}), 400
-    
+
     online_setups = get_online_setups()
-    
+
     if len(online_setups) < num_players:
         logger.warning(f"Start request failed: Not enough online setups. Need {num_players}, have {len(online_setups)}")
         return jsonify({
@@ -216,78 +221,123 @@ def start_all():
             "online_setups": len(online_setups),
             "required_players": num_players
         }), 400
-    
+
     session_id = f"session-{int(time.time())}"
+    configured_setups = []
     results = []
-    
+
+    # Phase 1: Configure all setups and wait for confirmation
+    logger.info(f"Phase 1: Configuring {num_players} setups for {game}")
     for i in range(num_players):
         setup_id, setup = online_setups[i]
         player_id = i + 1
-        
+        role = "host" if i == 0 else "client"
+
         try:
-            logger.info(f"Configuring setup {setup_id} for {game} as Player {player_id}")
-            
+            logger.info(f"Configuring setup {setup_id} ({setup.heartbeat.name}) as {role} (Player {player_id})")
+
             config_response = requests.post(
                 f"http://{setup_id}/api/configure",
                 json={
                     "game": game,
                     "session_id": session_id,
-                    "player_id": player_id
+                    "player_id": player_id,
+                    "role": role
                 },
                 timeout=5
             )
-            
+
             if not config_response.ok:
                 logger.error(f"Failed to configure {setup_id}: {config_response.text}")
                 results.append({
                     "setup_id": setup_id,
-                    "hostname": setup.heartbeat.hostname,
+                    "name": setup.heartbeat.name,
                     "player_id": player_id,
+                    "role": role,
                     "status": "failed_configure",
                     "error": config_response.text
                 })
                 continue
-            
-            logger.info(f"Starting game on setup {setup_id}")
+
+            # Configuration successful
+            config_data = config_response.json()
+            logger.info(f"✓ Configuration confirmed for {setup_id}: {config_data.get('message')}")
+            configured_setups.append((setup_id, setup, player_id, role))
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error configuring {setup_id}: {e}")
+            results.append({
+                "setup_id": setup_id,
+                "name": setup.heartbeat.name,
+                "player_id": player_id,
+                "role": role,
+                "status": "error_configure",
+                "error": str(e)
+            })
+
+    # Check if all setups were configured successfully
+    if len(configured_setups) < num_players:
+        logger.error(f"Configuration failed: Only {len(configured_setups)}/{num_players} setups configured successfully")
+        return jsonify({
+            "game": game,
+            "session_id": session_id,
+            "num_players": num_players,
+            "configured_count": len(configured_setups),
+            "error": "Not all setups could be configured",
+            "results": results
+        }), 400
+
+    logger.info(f"✓ All {num_players} setups configured successfully")
+
+    # Phase 2: Start games on all configured setups
+    logger.info(f"Phase 2: Starting games on all configured setups")
+    for setup_id, setup, player_id, role in configured_setups:
+        try:
+            logger.info(f"Starting game on setup {setup_id} ({setup.heartbeat.name})")
+
             start_response = requests.post(
                 f"http://{setup_id}/api/start",
                 timeout=5
             )
-            
+
             if start_response.ok:
-                logger.info(f"Successfully started game on {setup_id}")
+                logger.info(f"✓ Successfully started game on {setup_id}")
                 results.append({
                     "setup_id": setup_id,
-                    "hostname": setup.heartbeat.hostname,
+                    "name": setup.heartbeat.name,
                     "player_id": player_id,
+                    "role": role,
                     "status": "success"
                 })
             else:
                 logger.error(f"Failed to start game on {setup_id}: {start_response.text}")
                 results.append({
                     "setup_id": setup_id,
-                    "hostname": setup.heartbeat.hostname,
+                    "name": setup.heartbeat.name,
                     "player_id": player_id,
+                    "role": role,
                     "status": "failed_start",
                     "error": start_response.text
                 })
-                
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error communicating with {setup_id}: {e}")
+            logger.error(f"Error starting game on {setup_id}: {e}")
             results.append({
                 "setup_id": setup_id,
-                "hostname": setup.heartbeat.hostname,
+                "name": setup.heartbeat.name,
                 "player_id": player_id,
-                "status": "error",
+                "role": role,
+                "status": "error_start",
                 "error": str(e)
             })
-    
+
     success_count = sum(1 for r in results if r['status'] == 'success')
-    
+
     return jsonify({
         "game": game,
         "session_id": session_id,
         "num_players": num_players,
+        "configured_count": len(configured_setups),
         "success_count": success_count,
         "results": results
     })
@@ -295,21 +345,20 @@ def start_all():
 
 @app.route('/api/stop_all', methods=['POST'])
 def stop_all():
-    """Stop game on N setups where N is the number of players"""
-    data = request.json
-    num_players = data.get('num_players', 1)
-    
+    """Stop game on all available online setups"""
     online_setups = get_online_setups()
     
-    if len(online_setups) < num_players:
-        logger.warning(f"Stop request: Only {len(online_setups)} setups online, requested to stop {num_players}")
-        num_players = len(online_setups)
+    if not online_setups:
+        logger.warning("Stop request: No online setups found")
+        return jsonify({
+            "total_setups": 0,
+            "success_count": 0,
+            "results": []
+        })
     
     results = []
     
-    for i in range(num_players):
-        setup_id, setup = online_setups[i]
-        
+    for setup_id, setup in online_setups:
         try:
             logger.info(f"Stopping game on setup {setup_id}")
             
@@ -322,14 +371,14 @@ def stop_all():
                 logger.info(f"Successfully stopped game on {setup_id}")
                 results.append({
                     "setup_id": setup_id,
-                    "hostname": setup.heartbeat.hostname,
+                    "name": setup.heartbeat.name,
                     "status": "success"
                 })
             else:
                 logger.error(f"Failed to stop game on {setup_id}: {stop_response.text}")
                 results.append({
                     "setup_id": setup_id,
-                    "hostname": setup.heartbeat.hostname,
+                    "name": setup.heartbeat.name,
                     "status": "failed",
                     "error": stop_response.text
                 })
@@ -338,7 +387,7 @@ def stop_all():
             logger.error(f"Error communicating with {setup_id}: {e}")
             results.append({
                 "setup_id": setup_id,
-                "hostname": setup.heartbeat.hostname,
+                "name": setup.heartbeat.name,
                 "status": "error",
                 "error": str(e)
             })
@@ -346,7 +395,7 @@ def stop_all():
     success_count = sum(1 for r in results if r['status'] == 'success')
     
     return jsonify({
-        "num_players": num_players,
+        "total_setups": len(online_setups),
         "success_count": success_count,
         "results": results
     })
