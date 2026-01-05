@@ -10,3 +10,4 @@ pywin32
 zeroconf
 requests
 flask
+pydantic>=2.0.0

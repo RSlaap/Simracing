@@ -3,7 +3,9 @@ from ctypes import POINTER, c_int, c_uint, c_long, windll, c_void_p
 from ctypes import wintypes
 import atexit
 import threading
+from utils.monitoring import get_logger
 
+logger = get_logger(__name__)
 
 user32 = windll.user32
 kernel32 = windll.kernel32
@@ -82,7 +84,7 @@ def _hook_thread_func():
 
 def block_input():
     global is_blocking, hook_thread, hook_error
-    print("Blocking input")
+    logger.info("Blocking input")
     if is_blocking:
         return
     
@@ -124,19 +126,19 @@ atexit.register(unblock_input)
 
 if __name__ == "__main__":
     import time
-    
-    print("Testing input blocker...")
-    print("Blocking input in 3 seconds...")
+
+    logger.info("Testing input blocker...")
+    logger.info("Blocking input in 3 seconds...")
     time.sleep(3)
-    
+
     try:
         block_input()
-        print("Input blocked! Try moving your mouse or typing.")
-        print("Press Ctrl+C in this console to unblock.")
+        logger.info("Input blocked! Try moving your mouse or typing.")
+        logger.info("Press Ctrl+C in this console to unblock.")
         time.sleep(5)
     except RuntimeError as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
     finally:
-        print("\nUnblocking input...")
+        logger.info("Unblocking input...")
         unblock_input()
-        print("Input unblocked!")
+        logger.info("Input unblocked!")

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(dir:*)",
+      "Bash(\"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\python\\\\python.exe\" -m pip install platformdirs)",
+      "Bash(\"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\python\\\\python.exe\" -m pip install distlib filelock)",
+      "Bash(C:ProjectsSimracingSimRacingControllervenvScriptspython.exe -m pip list)",
+      "Bash(C:ProjectsSimracingSimRacingControllervenvScriptspython.exe -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(cmd /c \"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\venv\\\\Scripts\\\\python.exe -m pip list\")",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"dir /b C:\\\\Projects\\\\Simracing\\\\SimRacingController\")",
+      "Bash(venv\\\\Scripts\\\\python.exe -m pip:*)",
+      "Bash(\"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\python\\\\python.exe\" -m pip list)",
+      "Bash(cmd /c \"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\prepare_setup.bat\")",
+      "Bash(\"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\python\\\\python.exe\" -m pip install -r \"C:\\\\Projects\\\\Simracing\\\\SimRacingController\\\\requirements.txt\")"
+    ]
+  }
+}

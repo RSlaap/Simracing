@@ -7,10 +7,10 @@ echo This script prepares everything on YOUR PC (with internet)
 echo so it can be copied to the offline SimRacing PC.
 echo.
 
-SET "SSD_ROOT=%~dp0.."
+SET "SSD_ROOT=%~dp0"
 
 
-echo [1/4] Verifying embedded Python...
+echo [1/5] Verifying embedded Python...
 if not exist "%SSD_ROOT%\python\python.exe" (
     echo ERROR: Embedded Python not found at %SSD_ROOT%\python\
     pause
@@ -19,7 +19,7 @@ if not exist "%SSD_ROOT%\python\python.exe" (
 echo OK
 echo.
 
-echo [2/4] Verifying requirements.txt...
+echo [2/5] Verifying requirements.txt...
 if not exist "%SSD_ROOT%\requirements.txt" (
     echo ERROR: requirements.txt not found
     pause
@@ -28,50 +28,41 @@ if not exist "%SSD_ROOT%\requirements.txt" (
 echo OK
 echo.
 
-echo [3/4] Creating portable virtual environment...
-if exist "%SSD_ROOT%\venv" (
-    echo Removing old venv...
-    rmdir /s /q "%SSD_ROOT%\venv"
-)
-
-echo.
-echo Creating venv with your system Python...
-echo (This will be portable to other systems)
+echo [3/5] Upgrading pip...
 echo.
 
-python -m venv "%SSD_ROOT%\venv"
+"%SSD_ROOT%\python\python.exe" -m pip install --upgrade pip
 
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Failed to create venv
-    echo Make sure Python is installed on your system
+    echo ERROR: Failed to upgrade pip
+    echo Make sure the embedded Python has pip available
     pause
     exit /b 1
 )
 echo OK
 echo.
-echo [4/4] Installing all packages...
+
+echo [4/5] Installing all packages directly into embedded Python...
 echo This may take several minutes...
 echo.
 
-"%SSD_ROOT%\venv\Scripts\pip.exe" install --upgrade pip
-
-"%SSD_ROOT%\venv\Scripts\pip.exe" install -r "%SSD_ROOT%\requirements.txt"
+"%SSD_ROOT%\python\python.exe" -m pip install -r "%SSD_ROOT%\requirements.txt"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo Some packages failed with normal installation.
     echo Retrying failed packages with binary-only mode...
     echo.
-    
+
     setlocal enabledelayedexpansion
     for /f "usebackq tokens=*" %%a in ("%SSD_ROOT%\requirements.txt") do (
         set "line=%%a"
         if not "!line:~0,1!"=="#" (
             if not "!line!"=="" (
-                "%SSD_ROOT%\venv\Scripts\pip.exe" show %%a >nul 2>&1
+                "%SSD_ROOT%\python\python.exe" -m pip show %%a >nul 2>&1
                 if !ERRORLEVEL! NEQ 0 (
                     echo Retrying: %%a (binary-only)
-                    "%SSD_ROOT%\venv\Scripts\pip.exe" install --only-binary :all: "%%a"
+                    "%SSD_ROOT%\python\python.exe" -m pip install --only-binary :all: "%%a"
                 )
             )
         )
@@ -86,17 +77,16 @@ echo ================================================
 echo    Preparation Complete!
 echo ================================================
 echo.
-echo Your SSD now contains:
-echo - Embedded Python: %SSD_ROOT%\python\
-echo - Virtual environment with all packages: %SSD_ROOT%\venv\
+echo Your project now contains:
+echo - Embedded Python with all packages: %SSD_ROOT%\python\
 echo - Your project: %SSD_ROOT%\
 echo.
 echo IMPORTANT: Test it first on this PC by running:
 echo   scripts\launcher.bat
 echo.
-echo If it works, copy the ENTIRE SSD contents to the SimRacing PC.
-echo On the SimRacing PC, just run scripts\start.bat - NO setup needed!
+echo If it works, copy the ENTIRE project folder to the SimRacing PC.
+echo On the SimRacing PC, just run scripts\launcher.bat - NO setup needed!
 echo.
-echo The venv will work on any Windows PC with the same architecture.
+echo The embedded Python will work on any Windows PC with the same architecture.
 echo.
 pause

@@ -231,7 +231,11 @@ def start_all():
     for i in range(num_players):
         setup_id, setup = online_setups[i]
         player_id = i + 1
-        role = "host" if i == 0 else "client"
+        # Assign singleplayer role when only 1 player, otherwise host/join
+        if num_players == 1:
+            role = "singleplayer"
+        else:
+            role = "host" if i == 0 else "join"
 
         try:
             logger.info(f"Configuring setup {setup_id} ({setup.heartbeat.name}) as {role} (Player {player_id})")

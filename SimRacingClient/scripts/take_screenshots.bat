@@ -2,7 +2,7 @@
 set "SSD_ROOT=%~dp0.."
 
 echo ================================================
-echo Starting SimRacing Project...
+echo Starting Template Capture Tool...
 echo ================================================
 echo.
 echo Debug Info:
@@ -27,12 +27,12 @@ if not exist "%PYTHON_EXE%" (
 echo - Using embedded Python: %PYTHON_EXE%
 
 echo - Python path: %PYTHON_EXE%
-echo - Script path: %SSD_ROOT%\orchestrator.py
+echo - Script path: %SSD_ROOT%\src\templating\template_capture.py
 echo.
 
-if not exist "%SSD_ROOT%\orchestrator.py" (
-    echo ERROR: Main script not found at:
-    echo %SSD_ROOT%\orchestrator.py
+if not exist "%SSD_ROOT%\src\templating\template_capture.py" (
+    echo ERROR: Template capture script not found at:
+    echo %SSD_ROOT%\src\templating\template_capture.py
     echo.
     echo Please verify your project structure.
     echo.
@@ -40,14 +40,21 @@ if not exist "%SSD_ROOT%\orchestrator.py" (
     exit /b 1
 )
 
-echo All paths verified. Starting project...
+echo All paths verified. Starting template capture...
+echo.
+echo Instructions:
+echo - Press 'S' to start capturing a template
+echo - Click top-left corner, then bottom-right corner
+echo - Press 'Q' to quit when done
 echo.
 
-"%PYTHON_EXE%" "%SSD_ROOT%\orchestrator.py"
+REM Change to src directory so Python can find local modules
+cd /d "%SSD_ROOT%\src"
+"%PYTHON_EXE%" templating\template_capture.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ERROR: Project exited with error code %ERRORLEVEL%
+    echo ERROR: Template capture exited with error code %ERRORLEVEL%
     echo Press any key to close...
-    pause >nul
+    pause
 )

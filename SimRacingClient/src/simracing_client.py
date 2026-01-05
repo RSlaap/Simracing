@@ -1,18 +1,21 @@
 from flask import Flask, request, jsonify
-from zeroconf import ServiceInfo, Zeroconf
-import socket
+from typing import Dict
+import json
 import threading
 import time
-import logging
+import requests
+from pathlib import Path
+from utils.networking import get_local_ip, register_mdns_service
+from games import launch
+from utils.process import terminate_process
+from games.registry import GAME_REGISTRY
+from utils.monitoring import get_logger, setup_logging
 
-from utils.get_local_ip import get_local_ip
+# Initialize logging with file output
+log_file = Path(__file__).parent.parent / "scripts" / "simracing_client.log"
+setup_logging(log_file=log_file, console=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger('SimRacingClient')
+logger = get_logger(__name__)
 
 app = Flask(__name__)
 
@@ -21,7 +24,7 @@ ORCHESTRATOR_URL = None
 heartbeat_thread = None
 stop_heartbeat = threading.Event()
 SERVICE_PORT = 5000
-MACHINE_CONFIG = None
+MACHINE_CONFIG: Dict = {}
 
 SETUP_STATE = {
     "status": "idle",
@@ -30,35 +33,8 @@ SETUP_STATE = {
     "role": None
 }
 
-def register_mdns_service(config, port=5000):
-    """Register this setup as discoverable via mDNS"""
-    local_ip = get_local_ip()
-
-    service_type = "_simracing._tcp.local."
-    service_name = f"{config['name']} SimRacing Setup.{service_type}"
-
-    info = ServiceInfo(
-        service_type,
-        service_name,
-        addresses=[socket.inet_aton(local_ip)],
-        port=port,
-        properties={
-            'name': config['name'],
-            'id': str(config['id']),
-            'status': 'idle',
-            'games': ','.join([])
-        }
-    )
-
-    zeroconf = Zeroconf()
-    zeroconf.register_service(info)
-    logger.info(f"mDNS service registered: {service_name}")
-    logger.info(f"Discoverable at: {local_ip}:{port}")
-    return zeroconf, info
-
 def _send_heartbeat():
     """Send periodic status updates to the orchestrator"""
-    import requests
     logger.info("Heartbeat service started")
 
     while not stop_heartbeat.is_set():
@@ -126,16 +102,6 @@ def register_orchestrator():
         "heartbeat_interval": HEARTBEAT_INTERVAL
     })
 
-# @app.route('/api/status', methods=['GET'])
-# def get_status():
-#     logger.info("Status request received")
-#     """Return current setup status"""
-#     return jsonify({
-#         "status": SETUP_STATE["status"],
-#         "current_game": SETUP_STATE["current_game"],
-#         "session_id": SETUP_STATE["session_id"],
-#         "supported_games": list()
-#     })
 
 @app.route('/api/configure', methods=['POST'])
 def configure():
@@ -161,24 +127,97 @@ def configure():
 
 @app.route('/api/start', methods=['POST'])
 def start_game():
-    # TODO: Start game logic
+    """Start the configured game"""
     logger.info("Received start game request.")
-    game = ""
-    return jsonify({
-        "status": "success",
-        "message": f"{game} is starting",
-    })
+
+    # Validate that setup is configured
+    if SETUP_STATE["status"] != "configured":
+        logger.error(f"Cannot start game: setup is not configured (status: {SETUP_STATE['status']})")
+        return jsonify({
+            "status": "error",
+            "message": "Setup must be configured before starting game"
+        }), 400
+
+    game = SETUP_STATE["current_game"]
+    role = SETUP_STATE["role"]
+
+    logger.info(f"Starting {game} with role {role}")
+
+    try:
+        # Launch the game using the new games module
+        success = launch(game, role)
+
+        if success:
+            # Update state to running
+            SETUP_STATE["status"] = "running"
+            logger.info(f"{game} started successfully")
+            return jsonify({
+                "status": "success",
+                "message": f"{game} is starting as {role}",
+            })
+        else:
+            logger.error(f"Failed to start {game}")
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to start {game}"
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error starting game: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error starting game: {str(e)}"
+        }), 500
 
 @app.route('/api/stop', methods=['POST'])
 def stop_game():
-    # TODO: Implement stop game logic
+    """Stop the currently running game"""
     logger.info("Stop game request received.")
-    return jsonify({
-        "status": "success",
-        "message": "Game stopped"
-    })
 
-def start_server(config):
+    game = SETUP_STATE["current_game"]
+
+    if not game:
+        logger.warning("No game is currently configured")
+        return jsonify({
+            "status": "error",
+            "message": "No game is currently running"
+        }), 400
+
+    logger.info(f"Attempting to close {game}")
+
+    try:
+        # Get game config to retrieve process name
+        config = GAME_REGISTRY.get(game)
+        success = terminate_process(config.process_name)
+
+        if success:
+            # Reset state to idle
+            SETUP_STATE["status"] = "idle"
+            SETUP_STATE["current_game"] = None
+            SETUP_STATE["session_id"] = None
+            SETUP_STATE["role"] = None
+
+            logger.info(f"{game} closed successfully, state reset to idle")
+            return jsonify({
+                "status": "success",
+                "message": f"{game} stopped successfully"
+            })
+        else:
+            logger.error(f"Failed to close {game}")
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to stop {game}"
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error stopping game: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error stopping game: {str(e)}"
+        }), 500
+
+
+def _start_server(config):
     global MACHINE_CONFIG
     MACHINE_CONFIG = config
 
@@ -202,27 +241,22 @@ def start_server(config):
         zeroconf.close()
         logger.info("Service stopped")
 
+
 if __name__ == "__main__":
-    import json
-    from pathlib import Path
-
-    config_path = Path(__file__).parent / "machine_configuration.json"
-
+    config_path = Path(__file__).parent.parent / "machine_configuration.json"
     if not config_path.exists():
         logger.error(f"Configuration file not found: {config_path}")
         logger.error("Please create machine_configuration.json with 'name' and 'id' fields")
         exit(1)
-
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
-
         if 'name' not in config or 'id' not in config:
             logger.error("Configuration must contain 'name' and 'id' fields")
             exit(1)
 
         logger.info(f"Loaded configuration from {config_path}")
-        start_server(config)
+        _start_server(config)
 
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in configuration file: {e}")

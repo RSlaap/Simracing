@@ -8,25 +8,31 @@ echo.
 echo Debug Info:
 echo - Script location: %~dp0
 echo - SSD Root: %SSD_ROOT%
-echo - Python path: %SSD_ROOT%\venv\Scripts\python.exe
-echo - Script path: %SSD_ROOT%\simracing_client.py
 echo.
 
-if not exist "%SSD_ROOT%\venv\Scripts\python.exe" (
-    echo ERROR: Python executable not found at:
-    echo %SSD_ROOT%\venv\Scripts\python.exe
+REM Use embedded Python directly
+set "PYTHON_EXE=%SSD_ROOT%\python\python.exe"
+
+if not exist "%PYTHON_EXE%" (
+    echo ERROR: Embedded Python not found!
     echo.
-    echo Please verify:
-    echo 1. The venv folder exists at %SSD_ROOT%\venv
-    echo 2. You ran prepare_portable.bat to create the venv
+    echo Expected location: %PYTHON_EXE%
+    echo.
+    echo Please run prepare_setup.bat to set up the environment
     echo.
     pause
     exit /b 1
 )
 
-if not exist "%SSD_ROOT%\simracing_client.py" (
+echo - Using embedded Python: %PYTHON_EXE%
+
+echo - Python path: %PYTHON_EXE%
+echo - Script path: %SSD_ROOT%\src\simracing_client.py
+echo.
+
+if not exist "%SSD_ROOT%\src\simracing_client.py" (
     echo ERROR: Main script not found at:
-    echo %SSD_ROOT%\simracing_client.py
+    echo %SSD_ROOT%\src\simracing_client.py
     echo.
     echo Please verify your project structure.
     echo.
@@ -37,11 +43,13 @@ if not exist "%SSD_ROOT%\simracing_client.py" (
 echo All paths verified. Starting project...
 echo.
 
-"%SSD_ROOT%\venv\Scripts\python.exe" "%SSD_ROOT%\simracing_client.py"
+REM Change to src directory so Python can find local modules
+cd /d "%SSD_ROOT%\src"
+"%PYTHON_EXE%" simracing_client.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ERROR: Project exited with error code %ERRORLEVEL%
     echo Press any key to close...
-    pause >nul
+    pause
 )

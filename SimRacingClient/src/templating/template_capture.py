@@ -9,7 +9,9 @@ from pynput import keyboard
 import tkinter as tk
 from datetime import datetime
 
-TEMPLATES_DIR = Path("unclassified_templates")
+# Use absolute path relative to this script's location
+SCRIPT_DIR = Path(__file__).parent
+TEMPLATES_DIR = SCRIPT_DIR / "unclassified_templates"
 TEMPLATES_DATA = TEMPLATES_DIR / "templates.json"
 
 class TemplateCapturer:
@@ -85,13 +87,20 @@ class TemplateCapturer:
     
     def load_templates_data(self):
         if TEMPLATES_DATA.exists():
-            with open(TEMPLATES_DATA, 'r') as f:
-                return json.load(f)
-        return {}
-    
+            try:
+                with open(TEMPLATES_DATA, 'r') as f:
+                    content = f.read().strip()
+                    if not content:
+                        return []
+                    return json.loads(content)
+            except (json.JSONDecodeError, ValueError):
+                print(f"Warning: {TEMPLATES_DATA} contains invalid JSON, starting fresh")
+                return []
+        return []
+
     def save_templates_data(self, data):
         with open(TEMPLATES_DATA, 'w') as f:
-            json.dump(data, f, indent=4)
+            json.dump(data, f, indent=2)
     
     def capture_region(self, name, x1, y1, x2, y2):
         x1, x2 = min(x1, x2), max(x1, x2)
@@ -115,23 +124,29 @@ class TemplateCapturer:
         cv2.imwrite(str(template_path), img)
         
         screen_w, screen_h = pyautogui.size()
-        region_relative = (
+        region_relative = [
             x1 / screen_w,
             y1 / screen_h,
             x2 / screen_w,
             y2 / screen_h
-        )
-        
+        ]
+
         templates = self.load_templates_data()
-        templates[name] = {
-            "template": template_filename,
-            "region": region_relative
-        }
+        templates.append({
+            "options": [
+                {
+                    "template": template_filename,
+                    "region": region_relative,
+                    "key_press": "enter"
+                }
+            ]
+        })
         self.save_templates_data(templates)
-        
+
         print(f"\n✓ Captured: {name}")
         print(f"  Size: {img.shape[1]}x{img.shape[0]} pixels")
         print(f"  Region: {region_relative}")
+        print(f"  Total templates: {len(templates)}")
     
     def on_press(self, key):
         try:
@@ -190,7 +205,7 @@ class TemplateCapturer:
         print("\nReady - Press 'S' to capture first template")
         print("=" * 60 + "\n")
         
-        kb_listener = keyboard.Listener(on_press=self.on_press)
+        kb_listener = keyboard.Listener(on_press=self.on_press) # type: ignore
         mouse_listener = mouse.Listener(on_click=self.on_click)
         
         kb_listener.start()
