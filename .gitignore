@@ -2,6 +2,7 @@
 Games
 templates
 CLAUDE.md
+.claude 
 
 # Embedded Python distribution (should be downloaded on each dev machine)
 python/
@@ -39,4 +40,3 @@ desktop.ini
 # Temporary files
 *.tmp
 *.temp
-CLAUDE.md
