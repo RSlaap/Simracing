@@ -2,7 +2,8 @@
 Games
 templates
 CLAUDE.md
-.claude 
+.claude
+.claude/ 
 
 # Embedded Python distribution (should be downloaded on each dev machine)
 python/
