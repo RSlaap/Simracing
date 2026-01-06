@@ -1,18 +1,93 @@
 import cv2
 import numpy as np
 import pyautogui
-from typing import Callable, List, Union, Tuple
+from typing import Callable, List, Union, Tuple, Optional, Dict
 import time
 import pydirectinput
+import json
+from pathlib import Path
 from utils.monitoring import get_logger
 from utils.data_model import NavigationConfig, Step, StepOption
 
 logger = get_logger(__name__)
 
+# Global viewport configuration
+_VIEWPORT_CONFIG: Optional[Dict[str, float]] = None
+
 
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+def load_viewport_config() -> Optional[Dict[str, float]]:
+    """
+    Load viewport configuration from machine_configuration.json.
+
+    Returns:
+        Dict with keys x1, y1, x2, y2 (relative coordinates 0.0-1.0), or None if not configured
+    """
+    global _VIEWPORT_CONFIG
+
+    # Return cached config if already loaded
+    if _VIEWPORT_CONFIG is not None:
+        return _VIEWPORT_CONFIG
+
+    # Try to load from machine_configuration.json
+    config_path = Path(__file__).parent.parent.parent / "machine_configuration.json"
+
+    if not config_path.exists():
+        logger.debug("No machine_configuration.json found, viewport disabled")
+        return None
+
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            viewport = config.get("viewport")
+
+            if viewport and all(k in viewport for k in ["x1", "y1", "x2", "y2"]):
+                _VIEWPORT_CONFIG = viewport
+                logger.info(f"Viewport loaded: {viewport}")
+                return viewport
+            else:
+                logger.debug("No viewport configuration in machine_configuration.json")
+                return None
+    except Exception as e:
+        logger.warning(f"Failed to load viewport config: {e}")
+        return None
+
+
+def transform_coordinates_with_viewport(
+    template_x: float,
+    template_y: float,
+    viewport: Optional[Dict[str, float]] = None
+) -> Tuple[float, float]:
+    """
+    Transform template coordinates from game-space to screen-space using viewport.
+
+    Args:
+        template_x: X coordinate in game space (0.0-1.0, where 0.0 is left edge of game)
+        template_y: Y coordinate in game space (0.0-1.0, where 0.0 is top edge of game)
+        viewport: Viewport config dict with x1, y1, x2, y2, or None to disable transformation
+
+    Returns:
+        Tuple of (screen_x, screen_y) in screen space (0.0-1.0)
+
+    Example:
+        If viewport is [0.25, 0.0, 0.75, 1.0] (game occupies center 50% of screen width):
+        - template_x=0.0 (left edge of game) → screen_x=0.25 (25% from left of screen)
+        - template_x=0.5 (center of game) → screen_x=0.5 (50% from left of screen)
+        - template_x=1.0 (right edge of game) → screen_x=0.75 (75% from left of screen)
+    """
+    if viewport is None:
+        # No viewport configured, use template coordinates directly
+        return template_x, template_y
+
+    # Transform from game-space to screen-space
+    screen_x = viewport["x1"] + template_x * (viewport["x2"] - viewport["x1"])
+    screen_y = viewport["y1"] + template_y * (viewport["y2"] - viewport["y1"])
+
+    return screen_x, screen_y
+
 
 def get_cv2_matching_method(method_name: str) -> int:
     """
@@ -75,8 +150,8 @@ def match_template_at_position(
 
     Args:
         template_path: Path to the template image file
-        relative_x: Relative X coordinate (0.0-1.0) of region center
-        relative_y: Relative Y coordinate (0.0-1.0) of region center
+        relative_x: Relative X coordinate (0.0-1.0) of region center in game-space
+        relative_y: Relative Y coordinate (0.0-1.0) of region center in game-space
         threshold: Template matching confidence threshold (not used in matching, returned for caller to check)
         search_margin: Percentage of screen size to add as search margin (0.0-1.0)
                       e.g., 0.05 = 5% of screen size (~96 pixels on 1920x1080)
@@ -90,11 +165,15 @@ def match_template_at_position(
     Raises:
         ValueError: If template image cannot be loaded
     """
+    # Load viewport configuration and transform coordinates if needed
+    viewport = load_viewport_config()
+    screen_x, screen_y = transform_coordinates_with_viewport(relative_x, relative_y, viewport)
+
     screen_width, screen_height = pyautogui.size()
 
     # Convert relative coordinates to absolute pixel positions
-    absolute_x = int(relative_x * screen_width)
-    absolute_y = int(relative_y * screen_height)
+    absolute_x = int(screen_x * screen_width)
+    absolute_y = int(screen_y * screen_height)
 
     # Load template image
     template = cv2.imread(template_path, cv2.IMREAD_COLOR)

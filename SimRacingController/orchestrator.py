@@ -41,16 +41,27 @@ port = 8000
 
 
 def get_local_ip():
-    """Get the local IP address of this machine"""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        s.connect(('10.255.255.255', 1))
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        if not ip.startswith('127.'):
+            return ip
+    except Exception as e:
+        logger.warning(f"Hostname resolution failed: {e}")
+    
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('192.168.2.1', 80))
         ip = s.getsockname()[0]
-    except Exception:
-        ip = '127.0.0.1'
-    finally:
         s.close()
-    return ip
+        return ip
+    except Exception as e:
+        logger.error(f"Failed to connect to router: {e}")
+    
+    raise RuntimeError(
+        "Could not determine local IP address. "
+        "Please check network connection and configuration."
+    )
 
 
 def auto_register_setup(address, setup_port):
