@@ -11,50 +11,9 @@ from utils.data_model import NavigationConfig, Step, StepOption
 
 logger = get_logger(__name__)
 
-# Global viewport configuration
-_VIEWPORT_CONFIG: Optional[Dict[str, float]] = None
-
-
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-def load_viewport_config() -> Optional[Dict[str, float]]:
-    """
-    Load viewport configuration from machine_configuration.json.
-
-    Returns:
-        Dict with keys x1, y1, x2, y2 (relative coordinates 0.0-1.0), or None if not configured
-    """
-    global _VIEWPORT_CONFIG
-
-    # Return cached config if already loaded
-    if _VIEWPORT_CONFIG is not None:
-        return _VIEWPORT_CONFIG
-
-    # Try to load from machine_configuration.json
-    config_path = Path(__file__).parent.parent.parent / "machine_configuration.json"
-
-    if not config_path.exists():
-        logger.debug("No machine_configuration.json found, viewport disabled")
-        return None
-
-    try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-            viewport = config.get("viewport")
-
-            if viewport and all(k in viewport for k in ["x1", "y1", "x2", "y2"]):
-                _VIEWPORT_CONFIG = viewport
-                logger.info(f"Viewport loaded: {viewport}")
-                return viewport
-            else:
-                logger.debug("No viewport configuration in machine_configuration.json")
-                return None
-    except Exception as e:
-        logger.warning(f"Failed to load viewport config: {e}")
-        return None
-
 
 def transform_coordinates_with_viewport(
     template_x: float,
@@ -143,7 +102,8 @@ def match_template_at_position(
     relative_x: float,
     relative_y: float,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> float:
     """
     Performs template matching at a specified screen position with configurable search margin.
@@ -156,6 +116,7 @@ def match_template_at_position(
         search_margin: Percentage of screen size to add as search margin (0.0-1.0)
                       e.g., 0.05 = 5% of screen size (~96 pixels on 1920x1080)
         method: OpenCV template matching method (default: cv2.TM_CCOEFF_NORMED)
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         float: Maximum correlation value (match confidence score)
@@ -165,8 +126,7 @@ def match_template_at_position(
     Raises:
         ValueError: If template image cannot be loaded
     """
-    # Load viewport configuration and transform coordinates if needed
-    viewport = load_viewport_config()
+    # Transform coordinates using viewport if provided
     screen_x, screen_y = transform_coordinates_with_viewport(relative_x, relative_y, viewport)
 
     screen_width, screen_height = pyautogui.size()
@@ -263,7 +223,8 @@ def execute_navigation_sequence(
     previous_step_retries: int = 3,
     action_delay: float = 0.2,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> bool:
     """
     Execute a sequence of navigation steps with retry and fallback logic.
@@ -278,6 +239,7 @@ def execute_navigation_sequence(
         action_delay: Delay between sequential key presses
         search_margin: Percentage of screen size to add as search margin (default 0.05 = 5%)
         method: OpenCV template matching method (default: cv2.TM_CCOEFF_NORMED)
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         bool: True if all steps completed successfully, False otherwise
@@ -293,7 +255,7 @@ def execute_navigation_sequence(
         matched = attempt_step_options(
             i, step, template_dir,
             threshold, max_retries, retry_delay, action_delay,
-            search_margin, method
+            search_margin, method, viewport
         )
 
         if not matched:
@@ -304,7 +266,7 @@ def execute_navigation_sequence(
                 i, step, steps, consecutive_failures,
                 template_dir, threshold, max_retries,
                 previous_step_retries, retry_delay, action_delay,
-                search_margin, method
+                search_margin, method, viewport
             )
 
             if not success:
@@ -332,7 +294,8 @@ def handle_step_failure(
     retry_delay: float,
     action_delay: float,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> Tuple[bool, int]:
     """
     Attempts to recover from step failure by retrying previous step.
@@ -350,6 +313,7 @@ def handle_step_failure(
         action_delay: Delay between sequential key presses
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         Tuple of (success, consecutive_failures):
@@ -373,7 +337,8 @@ def handle_step_failure(
         retry_delay,
         action_delay,
         search_margin,
-        method
+        method,
+        viewport
     )
 
     if not prev_matched:
@@ -390,7 +355,8 @@ def handle_step_failure(
         retry_delay,
         action_delay,
         search_margin,
-        method
+        method,
+        viewport
     )
 
     if matched:
@@ -409,7 +375,8 @@ def attempt_step_options(
     retry_delay: float,
     action_delay: float = 0.2,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> bool:
     """
     Attempt matching template(s) at this step.
@@ -425,6 +392,7 @@ def attempt_step_options(
         action_delay: Delay between sequential key presses within an action
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         True if any option matched and action was executed, False otherwise
@@ -450,7 +418,8 @@ def attempt_step_options(
                     threshold=threshold,
                     action_delay=action_delay,
                     search_margin=search_margin,
-                    method=method
+                    method=method,
+                    viewport=viewport
                 )
 
                 if matched:
@@ -471,7 +440,8 @@ def attempt_step_options(
                     action=lambda kp=option.key_press: execute_key_presses(kp, action_delay),
                     threshold=threshold,
                     search_margin=search_margin,
-                    method=method
+                    method=method,
+                    viewport=viewport
                 )
 
                 if matched:
@@ -496,7 +466,8 @@ def navigate_if_template_matches(
     action: Callable[[], None],
     threshold: float = 0.8,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> bool:
     """
     Checks if template matches at position, executes action if match found.
@@ -509,6 +480,7 @@ def navigate_if_template_matches(
         threshold: Minimum match confidence (0.0-1.0)
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         bool: True if template matched and action was executed, False otherwise
@@ -518,7 +490,8 @@ def navigate_if_template_matches(
         relative_x=relative_x,
         relative_y=relative_y,
         search_margin=search_margin,
-        method=method
+        method=method,
+        viewport=viewport
     )
 
     if max_val >= threshold:
@@ -537,7 +510,8 @@ def navigate_press_until_match(
     threshold: float,
     action_delay: float,
     search_margin: float = 0.05,
-    method: int = cv2.TM_CCOEFF_NORMED
+    method: int = cv2.TM_CCOEFF_NORMED,
+    viewport: Optional[Dict[str, float]] = None
 ) -> bool:
     """
     Press key(s) repeatedly until template matches (press-before-check pattern).
@@ -554,6 +528,7 @@ def navigate_press_until_match(
         action_delay: Delay between key presses and after pressing
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
+        viewport: Optional viewport configuration for coordinate transformation
 
     Returns:
         True if template matched after pressing (stop pressing), False otherwise
@@ -571,7 +546,8 @@ def navigate_press_until_match(
         relative_x=relative_x,
         relative_y=relative_y,
         search_margin=search_margin,
-        method=method
+        method=method,
+        viewport=viewport
     )
 
     if max_val >= threshold:
@@ -646,6 +622,17 @@ def load_and_execute_navigation(
     # Convert method name to cv2 constant
     matching_method = get_cv2_matching_method(nav_config.matching_method)
 
+    # Convert viewport Pydantic model to dict if present
+    viewport_dict = None
+    if nav_config.viewport is not None:
+        viewport_dict = {
+            "x1": nav_config.viewport.x1,
+            "y1": nav_config.viewport.y1,
+            "x2": nav_config.viewport.x2,
+            "y2": nav_config.viewport.y2
+        }
+        logger.info(f"Using viewport: {viewport_dict}")
+
     logger.info(f"Starting navigation ({len(sequence.steps)} steps)")
     logger.debug(f"  Template dir: {template_dir}")
     logger.debug(f"  Threshold: {nav_config.template_threshold}, Max retries: {nav_config.max_retries}")
@@ -659,7 +646,8 @@ def load_and_execute_navigation(
         retry_delay=nav_config.retry_delay,
         action_delay=nav_config.action_delay,
         search_margin=nav_config.search_margin,
-        method=matching_method
+        method=matching_method,
+        viewport=viewport_dict
     )
 
     if not success:

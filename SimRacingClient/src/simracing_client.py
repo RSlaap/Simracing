@@ -7,7 +7,7 @@ import requests
 from pathlib import Path
 from utils.networking import get_local_ip, register_mdns_service
 from games import launch
-from utils.process import terminate_process
+from utils.process import terminate_process, is_process_running
 from games.registry import GAME_REGISTRY
 from utils.monitoring import get_logger, setup_logging
 
@@ -40,13 +40,36 @@ def _send_heartbeat():
     while not stop_heartbeat.is_set():
         if ORCHESTRATOR_URL:
             try:
+                # Check if configured game is actually running
+                actual_game = None
+                if SETUP_STATE["current_game"]:
+                    try:
+                        config = GAME_REGISTRY.get(SETUP_STATE["current_game"])
+                        if is_process_running(config.process_name):
+                            actual_game = SETUP_STATE["current_game"]
+                            # If game is running but state is not "running", update it
+                            if SETUP_STATE["status"] != "running":
+                                logger.info(f"Game {actual_game} is running but state was {SETUP_STATE['status']}, updating to running")
+                                SETUP_STATE["status"] = "running"
+                        else:
+                            # Game process is not running but we have it configured
+                            if SETUP_STATE["status"] == "running":
+                                logger.warning(f"Game {SETUP_STATE['current_game']} process not found, resetting state to idle")
+                                SETUP_STATE["status"] = "idle"
+                                SETUP_STATE["current_game"] = None
+                                SETUP_STATE["session_id"] = None
+                                SETUP_STATE["role"] = None
+                    except ValueError as e:
+                        # Game not in registry
+                        logger.error(f"Game {SETUP_STATE['current_game']} not found in registry: {e}")
+
                 payload = {
                     "name": MACHINE_CONFIG['name'],
                     "id": MACHINE_CONFIG['id'],
                     "ip": get_local_ip(),
                     "port": SERVICE_PORT,
                     "status": SETUP_STATE["status"],
-                    "current_game": SETUP_STATE["current_game"],
+                    "current_game": actual_game,
                     "session_id": SETUP_STATE["session_id"],
                     "timestamp": time.time()
                 }

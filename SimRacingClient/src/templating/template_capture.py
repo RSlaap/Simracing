@@ -13,7 +13,7 @@ from datetime import datetime
 SCRIPT_DIR = Path(__file__).parent
 TEMPLATES_DIR = SCRIPT_DIR / "unclassified_templates"
 TEMPLATES_DATA = TEMPLATES_DIR / "templates.json"
-MACHINE_CONFIG_PATH = SCRIPT_DIR.parent.parent / "machine_configuration.json"
+VIEWPORT_CONFIG_PATH = SCRIPT_DIR / "viewport.json"
 
 class TemplateCapturer:
     on_click_counter = 0
@@ -87,24 +87,24 @@ class TemplateCapturer:
         except:
             pass
     
-    def load_machine_config(self):
-        """Load machine configuration from machine_configuration.json"""
-        if MACHINE_CONFIG_PATH.exists():
+    def load_viewports(self):
+        """Load all named viewports from viewport.json"""
+        if VIEWPORT_CONFIG_PATH.exists():
             try:
-                with open(MACHINE_CONFIG_PATH, 'r') as f:
+                with open(VIEWPORT_CONFIG_PATH, 'r') as f:
                     return json.load(f)
             except (json.JSONDecodeError, ValueError):
-                print(f"Warning: {MACHINE_CONFIG_PATH} contains invalid JSON")
-                return None
-        return None
+                print(f"Warning: {VIEWPORT_CONFIG_PATH} contains invalid JSON")
+                return {}
+        return {}
 
-    def save_machine_config(self, config):
-        """Save machine configuration to machine_configuration.json"""
-        with open(MACHINE_CONFIG_PATH, 'w') as f:
-            json.dump(config, f, indent=4)
+    def save_viewports(self, viewports):
+        """Save all named viewports to viewport.json"""
+        with open(VIEWPORT_CONFIG_PATH, 'w') as f:
+            json.dump(viewports, f, indent=4)
 
     def capture_viewport(self, x1, y1, x2, y2):
-        """Capture viewport region and save to machine_configuration.json"""
+        """Capture viewport region and save to viewport.json with a name"""
         # Normalize coordinates (ensure x1 < x2, y1 < y2)
         x1, x2 = min(x1, x2), max(x1, x2)
         y1, y2 = min(y1, y2), max(y1, y2)
@@ -120,24 +120,29 @@ class TemplateCapturer:
             "y2": y2 / screen_h
         }
 
-        # Load existing config
-        config = self.load_machine_config()
-        if config is None:
-            print(f"\n✗ Error: {MACHINE_CONFIG_PATH} not found or invalid")
-            print("  Please create machine_configuration.json first")
-            return
-
-        # Add viewport to config
-        config["viewport"] = viewport
-
-        # Save updated config
-        self.save_machine_config(config)
-
-        print(f"\n✓ Viewport captured and saved!")
-        print(f"  Screen size: {screen_w}x{screen_h}")
+        # Prompt for viewport name
+        print(f"\n  Screen size: {screen_w}x{screen_h}")
         print(f"  Viewport region: ({x1}, {y1}) to ({x2}, {y2})")
         print(f"  Relative coords: {viewport}")
-        print(f"  Saved to: {MACHINE_CONFIG_PATH}")
+
+        viewport_name = input("\n  Enter viewport name (e.g., 'main_menu', 'gameplay'): ").strip()
+
+        if not viewport_name:
+            print("  ✗ Cancelled (no name provided)")
+            return
+
+        # Load existing viewports
+        viewports = self.load_viewports()
+
+        # Add or update this viewport
+        viewports[viewport_name] = viewport
+
+        # Save updated viewports
+        self.save_viewports(viewports)
+
+        print(f"\n✓ Viewport '{viewport_name}' captured and saved!")
+        print(f"  Saved to: {VIEWPORT_CONFIG_PATH}")
+        print(f"  Total viewports: {len(viewports)}")
 
     def load_templates_data(self):
         if TEMPLATES_DATA.exists():

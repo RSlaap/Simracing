@@ -50,6 +50,28 @@ def launch_process(executable_path: Path) -> subprocess.Popen:
         raise RuntimeError(f"Failed to launch: {str(e)}")
 
 
+def is_process_running(process_name: str) -> bool:
+    """
+    Check if a process with the given name is currently running.
+
+    Args:
+        process_name: Name of the process to check (e.g., 'F1_22.exe')
+
+    Returns:
+        bool: True if at least one process with this name is running, False otherwise
+    """
+    process_name_lower = process_name.lower()
+
+    for proc in psutil.process_iter(['name']):
+        try:
+            if proc.info['name'].lower() == process_name_lower:
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    return False
+
+
 def terminate_process(process_name: str) -> bool:
     """
     Find and terminate all processes matching the given name.
