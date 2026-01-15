@@ -1,10 +1,17 @@
+import sys
+from pathlib import Path
+
+# Ensure src directory is in Python path for local imports
+_src_dir = Path(__file__).parent.resolve()
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 from flask import Flask, request, jsonify
 from typing import Dict
 import json
 import threading
 import time
 import requests
-from pathlib import Path
 from utils.networking import get_local_ip, register_mdns_service
 from games import launch
 from utils.process import terminate_process, is_process_running
@@ -148,6 +155,32 @@ def configure():
         "state": SETUP_STATE
     })
 
+def _launch_game_async(game: str, role: str):
+    """Background thread function to launch game"""
+    try:
+        logger.info(f"Background thread: launching {game} as {role}")
+        success = launch(game, role)
+
+        if success:
+            SETUP_STATE["status"] = "running"
+            logger.info(f"Background thread: {game} started successfully")
+        else:
+            logger.error(f"Background thread: Failed to start {game}")
+            # Reset state on failure
+            SETUP_STATE["status"] = "idle"
+            SETUP_STATE["current_game"] = None
+            SETUP_STATE["session_id"] = None
+            SETUP_STATE["role"] = None
+
+    except Exception as e:
+        logger.error(f"Background thread: Error starting game: {e}")
+        # Reset state on error
+        SETUP_STATE["status"] = "idle"
+        SETUP_STATE["current_game"] = None
+        SETUP_STATE["session_id"] = None
+        SETUP_STATE["role"] = None
+
+
 @app.route('/api/start', methods=['POST'])
 def start_game():
     """Start the configured game"""
@@ -166,31 +199,22 @@ def start_game():
 
     logger.info(f"Starting {game} with role {role}")
 
-    try:
-        # Launch the game using the new games module
-        success = launch(game, role)
+    # Update state to starting immediately
+    SETUP_STATE["status"] = "starting"
 
-        if success:
-            # Update state to running
-            SETUP_STATE["status"] = "running"
-            logger.info(f"{game} started successfully")
-            return jsonify({
-                "status": "success",
-                "message": f"{game} is starting as {role}",
-            })
-        else:
-            logger.error(f"Failed to start {game}")
-            return jsonify({
-                "status": "error",
-                "message": f"Failed to start {game}"
-            }), 500
+    # Launch game in background thread to avoid blocking the response
+    launch_thread = threading.Thread(
+        target=_launch_game_async,
+        args=(game, role),
+        daemon=True
+    )
+    launch_thread.start()
 
-    except Exception as e:
-        logger.error(f"Error starting game: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Error starting game: {str(e)}"
-        }), 500
+    logger.info(f"Game launch initiated in background thread")
+    return jsonify({
+        "status": "success",
+        "message": f"{game} is starting as {role}",
+    })
 
 @app.route('/api/stop', methods=['POST'])
 def stop_game():
@@ -198,6 +222,7 @@ def stop_game():
     logger.info("Stop game request received.")
 
     game = SETUP_STATE["current_game"]
+    current_status = SETUP_STATE["status"]
 
     if not game:
         logger.warning("No game is currently configured")
@@ -206,34 +231,41 @@ def stop_game():
             "message": "No game is currently running"
         }), 400
 
-    logger.info(f"Attempting to close {game}")
+    logger.info(f"Attempting to close {game} (status: {current_status})")
 
     try:
         # Get game config to retrieve process name
         config = GAME_REGISTRY.get(game)
         success = terminate_process(config.process_name)
 
-        if success:
-            # Reset state to idle
-            SETUP_STATE["status"] = "idle"
-            SETUP_STATE["current_game"] = None
-            SETUP_STATE["session_id"] = None
-            SETUP_STATE["role"] = None
+        # Always reset state when stop is requested
+        # Even if process wasn't found (e.g., during "starting" phase)
+        SETUP_STATE["status"] = "idle"
+        SETUP_STATE["current_game"] = None
+        SETUP_STATE["session_id"] = None
+        SETUP_STATE["role"] = None
 
+        if success:
             logger.info(f"{game} closed successfully, state reset to idle")
             return jsonify({
                 "status": "success",
                 "message": f"{game} stopped successfully"
             })
         else:
-            logger.error(f"Failed to close {game}")
+            # Process not found, but state still reset
+            logger.warning(f"Process {config.process_name} not found, but state reset to idle")
             return jsonify({
-                "status": "error",
-                "message": f"Failed to stop {game}"
-            }), 500
+                "status": "success",
+                "message": f"{game} stop requested (process not running), state reset"
+            })
 
     except Exception as e:
         logger.error(f"Error stopping game: {e}")
+        # Still reset state on error
+        SETUP_STATE["status"] = "idle"
+        SETUP_STATE["current_game"] = None
+        SETUP_STATE["session_id"] = None
+        SETUP_STATE["role"] = None
         return jsonify({
             "status": "error",
             "message": f"Error stopping game: {str(e)}"
