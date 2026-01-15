@@ -1,0 +1,53 @@
+MANUAL TKINTER INSTALLATION INSTRUCTIONS
+==========================================
+
+Your embedded Python 3.11.9 needs tkinter files from a matching Python version.
+
+STEP 1: Install Python 3.11.9
+------------------------------
+1. Download from: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+2. Run the installer
+3. Choose "Customize installation"
+4. Make sure "tcl/tk and IDLE" is CHECKED
+5. Note the installation path (usually C:\Program Files\Python311 or C:\Users\<your-name>\AppData\Local\Programs\Python\Python311)
+
+STEP 2: Copy tkinter files
+---------------------------
+Copy these files FROM the Python 3.11.9 installation TO your embedded Python:
+
+From: C:\Program Files\Python311\  (or wherever you installed it)
+To: C:\Projects\Simracing\SimRacingClient\python\
+
+Files to copy to python\ folder:
+  ✓ tcl86t.dll          (from DLLs\ subfolder)
+  ✓ tk86t.dll           (from DLLs\ subfolder)
+  ✓ _tkinter.pyd        (from DLLs\ subfolder)
+  ✓ tcl folder          (entire folder with subfolders)
+
+Also copy to python\Lib\ folder:
+  ✓ Lib\tkinter folder  (entire folder - the Python package)
+
+STEP 3: Test
+------------
+Run this command to test:
+  python\python.exe -c "import tkinter; print('SUCCESS')"
+
+If it prints "SUCCESS", tkinter is installed!
+
+STEP 4: Cleanup (optional)
+---------------------------
+You can uninstall the full Python 3.11.9 after copying the files.
+Your embedded Python will keep working with the copied tkinter files.
+
+TROUBLESHOOTING
+---------------
+If you get "ModuleNotFoundError: No module named 'tkinter'":
+  - Make sure ALL items above were copied (DLLs AND Lib\tkinter folder)
+  - Make sure the DLL files are in python\ folder, not python\DLLs\
+  - Make sure the tcl folder contains tcl8.6 subfolder
+  - Make sure python\Lib\tkinter\ folder exists with __init__.py inside
+  - Check python311._pth includes "Lib" on its own line (add it if missing)
+
+If you get "DLL load failed":
+  - Make sure you copied from Python 3.11.x (not 3.12, 3.13, or 3.14)
+  - Make sure tcl86t.dll and tk86t.dll are in the same folder as python.exe
