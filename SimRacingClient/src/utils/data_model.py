@@ -111,6 +111,56 @@ class NavigationSequence(BaseModel):
 
 
 # ============================================================================
+# Pre-Launch Configuration Models (for CAMMUS, etc.)
+# ============================================================================
+
+class ClickStep(BaseModel):
+    """
+    A single click-based navigation step for pre-launch configuration.
+
+    Attributes:
+        template: Template image filename (relative to template directory)
+        double_click: Whether to double-click instead of single-click
+    """
+    template: str = Field(..., description="Template image filename")
+    double_click: bool = Field(default=False, description="Whether to double-click")
+
+
+class PreLaunchConfig(BaseModel):
+    """
+    Configuration for pre-launch setup (e.g., CAMMUS software configuration).
+
+    This configuration runs BEFORE the game launches to configure external
+    software like wheel/pedal/motion sim software.
+
+    Attributes:
+        enabled: Whether pre-launch config is enabled for this game
+        executable_path: Path to the software executable (optional, if it needs launching)
+        process_name: Process name to check if already running
+        window_title: Window title to focus (optional)
+        template_dir: Directory containing template images for click navigation
+        template_threshold: Template matching confidence threshold
+        max_retries: Maximum retry attempts per click step
+        retry_delay: Delay between retry attempts in seconds
+        click_delay: Delay after each successful click in seconds
+        click_steps: List of click steps to execute
+    """
+    enabled: bool = Field(default=False, description="Whether pre-launch config is enabled")
+    executable_path: Optional[Path] = Field(default=None, description="Path to software executable")
+    process_name: Optional[str] = Field(default=None, description="Process name to check if running")
+    window_title: Optional[str] = Field(default=None, description="Window title to focus")
+    template_dir: str = Field(..., description="Directory containing template images")
+    template_threshold: float = Field(default=0.85, ge=0.0, le=1.0, description="Template matching threshold")
+    max_retries: int = Field(default=10, ge=1, description="Maximum retry attempts per step")
+    retry_delay: float = Field(default=1.0, ge=0.0, description="Delay between retries in seconds")
+    click_delay: float = Field(default=0.5, ge=0.0, description="Delay after each click in seconds")
+    click_steps: List[ClickStep] = Field(default_factory=list, description="Click steps to execute")
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+# ============================================================================
 # Game Configuration Models (from registry.py)
 # ============================================================================
 
@@ -156,6 +206,7 @@ class GameConfig(BaseModel):
     process_name: str = Field(..., description="Process name for the running game")
     window_title: str = Field(..., description="Window title to search for when focusing")
     navigations: Dict[Role, List[NavigationConfig]] = Field(..., description="Navigation configs by role")
+    pre_launch_config: Optional[PreLaunchConfig] = Field(default=None, description="Optional pre-launch configuration")
 
     class Config:
         arbitrary_types_allowed = True  # Allow Path type

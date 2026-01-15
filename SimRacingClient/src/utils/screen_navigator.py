@@ -198,7 +198,7 @@ def execute_key_presses(
     if isinstance(key_press, str):
         key = key_mapping.get(key_press, key_press)
         pydirectinput.press(key)
-        logger.info(f'Pressed single key {key_press}')
+        # logger.info(f'Pressed single key {key_press}')
     # Handle multiple sequential key presses
     elif isinstance(key_press, list):
         time.sleep(action_delay)
@@ -533,7 +533,7 @@ def navigate_press_until_match(
     Returns:
         True if template matched after pressing (stop pressing), False otherwise
     """
-    logger.info("Starting navigate_press_until_match")
+    # logger.info("Starting navigate_press_until_match")
     # First press the key(s)
     execute_key_presses(key_press, action_delay)
 
