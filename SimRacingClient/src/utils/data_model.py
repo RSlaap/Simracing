@@ -63,11 +63,15 @@ class StepOption(BaseModel):
                    Optional - if None, template is matched but no key is pressed (wait/polling step)
         press_until_match: Key(s) to press repeatedly until template matches.
                           Mutually exclusive with key_press. Use this for skip intro patterns.
+        retry_delay: Override global retry_delay for this step (delay between polling attempts).
+        action_delay: Override global action_delay for this step (delay after success and between key presses).
     """
     template: str = Field(..., description="Path to template image relative to template_dir")
     region: List[float] = Field(..., min_length=4, max_length=4, description="Region as [x1, y1, x2, y2] in relative coordinates (0.0-1.0)")
     key_press: Union[str, List[str], None] = Field(default=None, description="Key(s) to press when template matches, or None for wait/polling steps")
     press_until_match: Union[str, List[str], None] = Field(default=None, description="Key(s) to press repeatedly until template matches")
+    retry_delay: Optional[float] = Field(default=None, ge=0.0, description="Override global retry_delay for this step (polling interval)")
+    action_delay: Optional[float] = Field(default=None, ge=0.0, description="Override global action_delay for this step (post-success wait)")
 
 class Step(BaseModel):
     """

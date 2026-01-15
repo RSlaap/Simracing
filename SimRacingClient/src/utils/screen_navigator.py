@@ -3,6 +3,7 @@ import numpy as np
 import pyautogui
 from typing import Callable, List, Union, Tuple, Optional, Dict
 import time
+import threading
 import pydirectinput
 import json
 from pathlib import Path
@@ -224,7 +225,8 @@ def execute_navigation_sequence(
     action_delay: float = 0.2,
     search_margin: float = 0.05,
     method: int = cv2.TM_CCOEFF_NORMED,
-    viewport: Optional[Dict[str, float]] = None
+    viewport: Optional[Dict[str, float]] = None,
+    cancel_event: Optional[threading.Event] = None
 ) -> bool:
     """
     Execute a sequence of navigation steps with retry and fallback logic.
@@ -240,6 +242,7 @@ def execute_navigation_sequence(
         search_margin: Percentage of screen size to add as search margin (default 0.05 = 5%)
         method: OpenCV template matching method (default: cv2.TM_CCOEFF_NORMED)
         viewport: Optional viewport configuration for coordinate transformation
+        cancel_event: Optional threading.Event to signal cancellation
 
     Returns:
         bool: True if all steps completed successfully, False otherwise
@@ -247,6 +250,10 @@ def execute_navigation_sequence(
     consecutive_failures = 0
 
     for i, step in enumerate(steps):
+        # Check for cancellation before each step
+        if cancel_event and cancel_event.is_set():
+            logger.info(f"Navigation cancelled at step {i+1}")
+            return False
         # Log if this is a multi-option step
         if len(step.options) > 1:
             logger.info(f"Step {i+1}: Trying {len(step.options)} possible matches...")
@@ -255,10 +262,15 @@ def execute_navigation_sequence(
         matched = attempt_step_options(
             i, step, template_dir,
             threshold, max_retries, retry_delay, action_delay,
-            search_margin, method, viewport
+            search_margin, method, viewport, cancel_event
         )
 
         if not matched:
+            # Check if failure was due to cancellation
+            if cancel_event and cancel_event.is_set():
+                logger.info(f"Navigation cancelled during step {i+1}")
+                return False
+
             logger.warning(f"✗ Step {i+1} failed after {max_retries} attempts")
 
             # Try to recover by retrying previous step
@@ -266,7 +278,7 @@ def execute_navigation_sequence(
                 i, step, steps, consecutive_failures,
                 template_dir, threshold, max_retries,
                 previous_step_retries, retry_delay, action_delay,
-                search_margin, method, viewport
+                search_margin, method, viewport, cancel_event
             )
 
             if not success:
@@ -277,7 +289,7 @@ def execute_navigation_sequence(
                     return False
         else:
             consecutive_failures = 0
-        time.sleep(action_delay)
+        # Note: action_delay is now applied inside attempt_step_options() after success
 
     return True
 
@@ -295,7 +307,8 @@ def handle_step_failure(
     action_delay: float,
     search_margin: float = 0.05,
     method: int = cv2.TM_CCOEFF_NORMED,
-    viewport: Optional[Dict[str, float]] = None
+    viewport: Optional[Dict[str, float]] = None,
+    cancel_event: Optional[threading.Event] = None
 ) -> Tuple[bool, int]:
     """
     Attempts to recover from step failure by retrying previous step.
@@ -314,6 +327,7 @@ def handle_step_failure(
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
         viewport: Optional viewport configuration for coordinate transformation
+        cancel_event: Optional threading.Event to signal cancellation
 
     Returns:
         Tuple of (success, consecutive_failures):
@@ -338,7 +352,8 @@ def handle_step_failure(
         action_delay,
         search_margin,
         method,
-        viewport
+        viewport,
+        cancel_event
     )
 
     if not prev_matched:
@@ -356,7 +371,8 @@ def handle_step_failure(
         action_delay,
         search_margin,
         method,
-        viewport
+        viewport,
+        cancel_event
     )
 
     if matched:
@@ -376,7 +392,8 @@ def attempt_step_options(
     action_delay: float = 0.2,
     search_margin: float = 0.05,
     method: int = cv2.TM_CCOEFF_NORMED,
-    viewport: Optional[Dict[str, float]] = None
+    viewport: Optional[Dict[str, float]] = None,
+    cancel_event: Optional[threading.Event] = None
 ) -> bool:
     """
     Attempt matching template(s) at this step.
@@ -388,11 +405,12 @@ def attempt_step_options(
         template_dir: Base directory for template images
         threshold: Matching threshold for template matching
         max_retries: Maximum number of retry attempts
-        retry_delay: Delay between retry attempts
-        action_delay: Delay between sequential key presses within an action
+        retry_delay: Global delay between retry attempts (can be overridden per-step)
+        action_delay: Global delay after success and between key presses (can be overridden per-step)
         search_margin: Percentage of screen size to add as search margin
         method: OpenCV template matching method
         viewport: Optional viewport configuration for coordinate transformation
+        cancel_event: Optional threading.Event to signal cancellation
 
     Returns:
         True if any option matched and action was executed, False otherwise
@@ -401,12 +419,20 @@ def attempt_step_options(
     is_multi_option = len(options) > 1
 
     for attempt in range(max_retries):
+        # Check for cancellation at start of each retry attempt
+        if cancel_event and cancel_event.is_set():
+            logger.info(f"Step {step_index+1} cancelled during attempt {attempt+1}")
+            return False
         # Try each option in order
         for option_index, option in enumerate(options):
             template_path = option.template
             region = option.region
             center_x, center_y = calculate_region_center(region)
             full_template_path = f"{template_dir}/{template_path}"
+
+            # Calculate effective delays (step-level override or global)
+            effective_retry_delay = option.retry_delay if option.retry_delay is not None else retry_delay
+            effective_action_delay = option.action_delay if option.action_delay is not None else action_delay
 
             # BRANCH 1: Press-until-match pattern (press BEFORE check)
             if option.press_until_match is not None:
@@ -416,7 +442,7 @@ def attempt_step_options(
                     relative_y=center_y,
                     key_press=option.press_until_match,
                     threshold=threshold,
-                    action_delay=action_delay,
+                    action_delay=effective_action_delay,
                     search_margin=search_margin,
                     method=method,
                     viewport=viewport
@@ -428,7 +454,8 @@ def attempt_step_options(
                         logger.info(f"✓ Step {step_index+1} matched option {option_index+1}/{len(options)} after pressing {key_display}")
                     else:
                         logger.info(f"✓ Step {step_index+1} matched after pressing {key_display}")
-                    time.sleep(retry_delay)
+                    # Apply action_delay after success (for transitions to next screen)
+                    time.sleep(effective_action_delay)
                     return True
 
             # BRANCH 2: Match-then-press pattern (check THEN press - existing behavior)
@@ -437,7 +464,7 @@ def attempt_step_options(
                     template_path=full_template_path,
                     relative_x=center_x,
                     relative_y=center_y,
-                    action=lambda kp=option.key_press: execute_key_presses(kp, action_delay),
+                    action=lambda kp=option.key_press, ad=effective_action_delay: execute_key_presses(kp, ad),
                     threshold=threshold,
                     search_margin=search_margin,
                     method=method,
@@ -450,12 +477,15 @@ def attempt_step_options(
                         logger.info(f"✓ Step {step_index+1} matched option {option_index+1}/{len(options)} - pressed {key_display}")
                     else:
                         logger.info(f"✓ Step {step_index+1} matched - pressed {key_display}")
-                    time.sleep(retry_delay)
+                    # Apply action_delay after success (for transitions to next screen)
+                    time.sleep(effective_action_delay)
                     return True
 
-        # No options matched in this attempt
+        # No options matched in this attempt - apply retry_delay before next attempt
         if attempt < max_retries - 1:
-            time.sleep(retry_delay)
+            # Use retry_delay from first option if set, otherwise global
+            effective_retry = options[0].retry_delay if options[0].retry_delay is not None else retry_delay
+            time.sleep(effective_retry)
 
     return False
 
@@ -559,7 +589,8 @@ def navigate_press_until_match(
 
 def load_and_execute_navigation(
     nav_config: NavigationConfig,
-    template_base_dir: str
+    template_base_dir: str,
+    cancel_event: Optional[threading.Event] = None
 ) -> bool:
     """
     Main entry point for template-based navigation.
@@ -568,6 +599,7 @@ def load_and_execute_navigation(
     Args:
         nav_config: NavigationConfig containing parameters and sequence
         template_base_dir: Base directory for resolving relative template paths
+        cancel_event: Optional threading.Event to signal cancellation
 
     Returns:
         bool: True if navigation completed successfully, False otherwise
@@ -647,7 +679,8 @@ def load_and_execute_navigation(
         action_delay=nav_config.action_delay,
         search_margin=nav_config.search_margin,
         method=matching_method,
-        viewport=viewport_dict
+        viewport=viewport_dict,
+        cancel_event=cancel_event
     )
 
     if not success:
