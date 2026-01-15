@@ -33,6 +33,9 @@ stop_heartbeat = threading.Event()
 SERVICE_PORT = 5000
 MACHINE_CONFIG: Dict = {}
 
+# Cancellation event for stopping running navigation sequences
+cancel_navigation = threading.Event()
+
 SETUP_STATE = {
     "status": "idle",
     "current_game": None,
@@ -158,8 +161,11 @@ def configure():
 def _launch_game_async(game: str, role: str):
     """Background thread function to launch game"""
     try:
+        # Clear any previous cancellation signal before starting
+        cancel_navigation.clear()
+
         logger.info(f"Background thread: launching {game} as {role}")
-        success = launch(game, role)
+        success = launch(game, role, cancel_event=cancel_navigation)
 
         if success:
             SETUP_STATE["status"] = "running"
@@ -220,6 +226,10 @@ def start_game():
 def stop_game():
     """Stop the currently running game"""
     logger.info("Stop game request received.")
+
+    # Signal any running navigation to stop immediately
+    cancel_navigation.set()
+    logger.info("Cancellation signal sent to navigation sequence")
 
     game = SETUP_STATE["current_game"]
     current_status = SETUP_STATE["status"]

@@ -817,6 +817,13 @@
             const area = document.querySelector(`[data-area-id="${areaId}"]`);
             const game = area.dataset.game;
 
+            // Optimistically update UI immediately
+            const slot = slots[`slot_${slotNum}`];
+            if (slot && slot.setup) {
+                slot.setup.status = 'starting';
+                updateGameArea(areaId);
+            }
+
             try {
                 const response = await fetch(`${ORCHESTRATOR_URL}/api/start_slot`, {
                     method: 'POST',
@@ -834,17 +841,40 @@
                     showMessage(`Started ${game} on Slot ${slotNum}`, 'success');
                 } else {
                     showMessage(result.error || 'Failed to start game', 'error');
+                    // Revert optimistic update on failure
+                    updateSlots();
                 }
 
                 setTimeout(updateSlots, 1000);
             } catch (error) {
                 console.error('Error starting slot:', error);
                 showMessage('Error communicating with orchestrator', 'error');
+                // Revert optimistic update on error
+                updateSlots();
             }
         }
 
         async function stopSlot(event, slotNum) {
             event.stopPropagation();
+
+            // Find which area this slot belongs to for UI update
+            let slotAreaId = null;
+            for (const [areaId, assignedSlots] of Object.entries(slotAssignments)) {
+                if (areaId !== 'pool' && assignedSlots.includes(slotNum)) {
+                    slotAreaId = areaId;
+                    break;
+                }
+            }
+
+            // Optimistically update UI immediately
+            const slot = slots[`slot_${slotNum}`];
+            if (slot && slot.setup) {
+                slot.setup.status = 'idle';
+                slot.setup.current_game = null;
+                if (slotAreaId) {
+                    updateGameArea(slotAreaId);
+                }
+            }
 
             try {
                 const response = await fetch(`${ORCHESTRATOR_URL}/api/stop_slot`, {
@@ -865,6 +895,8 @@
             } catch (error) {
                 console.error('Error stopping slot:', error);
                 showMessage('Error communicating with orchestrator', 'error');
+                // Revert optimistic update on error
+                updateSlots();
             }
         }
 
