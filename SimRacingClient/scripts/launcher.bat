@@ -43,7 +43,10 @@ if not exist "%SSD_ROOT%\src\simracing_client.py" (
 echo All paths verified. Starting project...
 echo.
 
-REM Change to src directory so Python can find local modules
+REM Set PYTHONPATH to src directory so Python can find local modules
+set "PYTHONPATH=%SSD_ROOT%\src"
+
+REM Change to src directory and run
 cd /d "%SSD_ROOT%\src"
 "%PYTHON_EXE%" simracing_client.py
 
