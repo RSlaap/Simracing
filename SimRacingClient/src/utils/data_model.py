@@ -18,6 +18,28 @@ Role = Literal['host', 'join', 'singleplayer']
 
 
 # ============================================================================
+# Machine Configuration Model
+# ============================================================================
+
+class MachineConfig(BaseModel):
+    """
+    Configuration for a SimRacing client machine.
+
+    Loaded from machine_configuration.json and augmented with runtime values.
+
+    Attributes:
+        id: Unique machine identifier (used for ordering - lowest ID becomes host)
+        name: Human-readable machine name (displayed in UI and logs)
+        ip: Machine's local IP address (set at runtime)
+        port: Service port number (set at runtime)
+    """
+    id: str = Field(..., description="Unique machine identifier")
+    name: str = Field(..., description="Human-readable machine name")
+    ip: str = Field(..., description="Machine's local IP address")
+    port: str = Field(..., description="Service port number")
+
+
+# ============================================================================
 # Navigation Template Models (from screen_navigator.py)
 # ============================================================================
 

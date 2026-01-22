@@ -7,7 +7,7 @@ if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
 from flask import Flask, request, jsonify
-from typing import Dict
+from typing import Dict, Optional
 import json
 import threading
 import time
@@ -15,8 +15,9 @@ import requests
 from utils.networking import get_local_ip, register_mdns_service
 from game_handling import launch
 from utils.process import terminate_process, is_process_running
-from game_handling.registry import GAME_REGISTRY
+from game_handling.registry import GAME_REGISTRY, Role
 from utils.monitoring import get_logger, setup_logging
+from utils.data_model import MachineConfig
 
 # Initialize logging with file output
 log_file = Path(__file__).parent.parent / "scripts" / "simracing_client.log"
@@ -31,7 +32,7 @@ ORCHESTRATOR_URL = None
 heartbeat_thread = None
 stop_heartbeat = threading.Event()
 SERVICE_PORT = 5000
-MACHINE_CONFIG: Dict = {}
+MACHINE_CONFIG: Optional[MachineConfig] = None
 
 # Cancellation event for stopping running navigation sequences
 cancel_navigation = threading.Event()
@@ -48,7 +49,7 @@ def _send_heartbeat():
     logger.info("Heartbeat service started")
 
     while not stop_heartbeat.is_set():
-        if ORCHESTRATOR_URL:
+        if ORCHESTRATOR_URL and MACHINE_CONFIG:
             try:
                 # Check if configured game is actually running
                 actual_game = None
@@ -74,10 +75,10 @@ def _send_heartbeat():
                         logger.error(f"Game {SETUP_STATE['current_game']} not found in registry: {e}")
 
                 payload = {
-                    "name": MACHINE_CONFIG['name'],
-                    "id": MACHINE_CONFIG['id'],
-                    "ip": get_local_ip(),
-                    "port": SERVICE_PORT,
+                    "name": MACHINE_CONFIG.name,
+                    "id": MACHINE_CONFIG.id,
+                    "ip": MACHINE_CONFIG.ip,
+                    "port": MACHINE_CONFIG.port,
                     "status": SETUP_STATE["status"],
                     "current_game": actual_game,
                     "session_id": SETUP_STATE["session_id"],
@@ -158,7 +159,7 @@ def configure():
         "state": SETUP_STATE
     })
 
-def _launch_game_async(game: str, role: str):
+def _launch_game_async(game: str, role: Role):
     """Background thread function to launch game"""
     try:
         # Clear any previous cancellation signal before starting
@@ -282,14 +283,21 @@ def stop_game():
         }), 500
 
 
-def _start_server(config):
+def _start_server(config: dict):
     global MACHINE_CONFIG
-    MACHINE_CONFIG = config
 
-    logger.info(f"Machine Name: {config['name']}")
-    logger.info(f"Machine ID: {config['id']}")
-    logger.info(f"IP: {get_local_ip()}")
-    logger.info(f"Port: {SERVICE_PORT}")
+    # Create MachineConfig with values from config file and runtime values
+    MACHINE_CONFIG = MachineConfig(
+        id=str(config['id']),
+        name=config['name'],
+        ip=get_local_ip(),
+        port=str(SERVICE_PORT)
+    )
+
+    logger.info(f"Machine Name: {MACHINE_CONFIG.name}")
+    logger.info(f"Machine ID: {MACHINE_CONFIG.id}")
+    logger.info(f"IP: {MACHINE_CONFIG.ip}")
+    logger.info(f"Port: {MACHINE_CONFIG.port}")
     logger.info("Registering mDNS service...")
     zeroconf, service_info = register_mdns_service(config, SERVICE_PORT)
     try:

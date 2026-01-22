@@ -55,7 +55,7 @@ Edit `config.json` for each game that needs CAMMUS configuration:
 {
   "f1_22": {
     "name": "F1 22",
-    "executable_path": "Games/F1 22 Champions Edition/F1_22.exe",
+    "executable_path": "../Software/F1 22 Champions Edition/F1_22.exe",
     "process_name": "F1_22.exe",
     "window_title": "F1 22",
 

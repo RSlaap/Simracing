@@ -7,7 +7,7 @@ echo This script prepares everything on YOUR PC (with internet)
 echo so it can be copied to the offline SimRacing PC.
 echo.
 
-SET "SSD_ROOT=%~dp0"
+SET "SSD_ROOT=%~dp0..\..\\"
 
 
 echo [1/5] Verifying embedded Python...

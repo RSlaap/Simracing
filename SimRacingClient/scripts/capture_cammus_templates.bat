@@ -37,7 +37,7 @@ if not exist "%PYTHON_EXE%" (
     echo.
     echo Expected location: %PYTHON_EXE%
     echo.
-    echo Please run prepare_setup.bat to set up the environment
+    echo Please run scripts\installation\prepare_setup.bat to set up the environment
     echo.
     pause
     exit /b 1

@@ -4,7 +4,7 @@ echo    Install SimRacing Project to Startup
 echo ================================================
 echo.
 
-set "SSD_ROOT=%~dp0.."
+set "SSD_ROOT=%~dp0..\.."
 
 echo Creating startup shortcut...
 set "STARTUP_SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Launch SimRacing Project.lnk"

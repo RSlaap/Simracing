@@ -7,7 +7,7 @@ echo This script downloads Python 3.11.9 embedded distribution
 echo and sets it up for portable deployment.
 echo.
 
-SET "SSD_ROOT=%~dp0"
+SET "SSD_ROOT=%~dp0..\..\\"
 SET "PYTHON_VERSION=3.11.9"
 SET "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
 SET "PYTHON_DIR=%SSD_ROOT%python"
@@ -100,7 +100,7 @@ echo.
 echo Embedded Python installed at: %PYTHON_DIR%
 echo.
 echo NEXT STEPS:
-echo 1. Run prepare_setup.bat to create the portable venv
+echo 1. Run scripts\installation\prepare_setup.bat to create the portable venv
 echo 2. Test with scripts\launcher.bat
 echo 3. Copy entire project folder to target PC
 echo.
