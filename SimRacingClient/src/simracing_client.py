@@ -13,9 +13,9 @@ import threading
 import time
 import requests
 from utils.networking import get_local_ip, register_mdns_service
-from games import launch
+from game_handling import launch
 from utils.process import terminate_process, is_process_running
-from games.registry import GAME_REGISTRY
+from game_handling.registry import GAME_REGISTRY
 from utils.monitoring import get_logger, setup_logging
 
 # Initialize logging with file output

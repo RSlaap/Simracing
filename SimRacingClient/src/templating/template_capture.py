@@ -13,14 +13,12 @@ from datetime import datetime
 SCRIPT_DIR = Path(__file__).parent
 TEMPLATES_DIR = SCRIPT_DIR / "unclassified_templates"
 TEMPLATES_DATA = TEMPLATES_DIR / "templates.json"
-VIEWPORT_CONFIG_PATH = SCRIPT_DIR / "viewport.json"
 
 class TemplateCapturer:
     on_click_counter = 0
     def __init__(self, game_name):
         self.game_name = game_name
         self.capturing = False
-        self.viewport_capturing = False
         self.corner1 = None
         self.running = True
         self.show_position = True
@@ -87,63 +85,6 @@ class TemplateCapturer:
         except:
             pass
     
-    def load_viewports(self):
-        """Load all named viewports from viewport.json"""
-        if VIEWPORT_CONFIG_PATH.exists():
-            try:
-                with open(VIEWPORT_CONFIG_PATH, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, ValueError):
-                print(f"Warning: {VIEWPORT_CONFIG_PATH} contains invalid JSON")
-                return {}
-        return {}
-
-    def save_viewports(self, viewports):
-        """Save all named viewports to viewport.json"""
-        with open(VIEWPORT_CONFIG_PATH, 'w') as f:
-            json.dump(viewports, f, indent=4)
-
-    def capture_viewport(self, x1, y1, x2, y2):
-        """Capture viewport region and save to viewport.json with a name"""
-        # Normalize coordinates (ensure x1 < x2, y1 < y2)
-        x1, x2 = min(x1, x2), max(x1, x2)
-        y1, y2 = min(y1, y2), max(y1, y2)
-
-        # Get screen dimensions
-        screen_w, screen_h = pyautogui.size()
-
-        # Calculate relative viewport coordinates
-        viewport = {
-            "x1": x1 / screen_w,
-            "y1": y1 / screen_h,
-            "x2": x2 / screen_w,
-            "y2": y2 / screen_h
-        }
-
-        # Prompt for viewport name
-        print(f"\n  Screen size: {screen_w}x{screen_h}")
-        print(f"  Viewport region: ({x1}, {y1}) to ({x2}, {y2})")
-        print(f"  Relative coords: {viewport}")
-
-        viewport_name = input("\n  Enter viewport name (e.g., 'main_menu', 'gameplay'): ").strip()
-
-        if not viewport_name:
-            print("  ✗ Cancelled (no name provided)")
-            return
-
-        # Load existing viewports
-        viewports = self.load_viewports()
-
-        # Add or update this viewport
-        viewports[viewport_name] = viewport
-
-        # Save updated viewports
-        self.save_viewports(viewports)
-
-        print(f"\n✓ Viewport '{viewport_name}' captured and saved!")
-        print(f"  Saved to: {VIEWPORT_CONFIG_PATH}")
-        print(f"  Total viewports: {len(viewports)}")
-
     def load_templates_data(self):
         if TEMPLATES_DATA.exists():
             try:
@@ -210,15 +151,9 @@ class TemplateCapturer:
     def on_press(self, key):
         try:
             if key.char == 's':
-                if not self.capturing and not self.viewport_capturing:
+                if not self.capturing:
                     print("\n\nStarting template capture - Click top-left corner...")
                     self.capturing = True
-                    self.corner1 = None
-                    self.show_position = False
-            elif key.char == 'v':
-                if not self.capturing and not self.viewport_capturing:
-                    print("\n\nStarting viewport capture - Click top-left corner of game area...")
-                    self.viewport_capturing = True
                     self.corner1 = None
                     self.show_position = False
             elif key.char == 'q':
@@ -255,35 +190,19 @@ class TemplateCapturer:
 
                 self.capturing = False
                 self.show_position = True
-                print("\nReady - Press 'S' for template, 'V' for viewport, 'Q' to quit")
-
-        # Handle viewport capture clicks
-        elif self.viewport_capturing and pressed:
-            if self.corner1 is None:
-                self.corner1 = (x, y)
-                print(f"\n  Top-left: ({x}, {y})")
-                print("  Click bottom-right corner of game area...")
-            else:
-                print(f"\n  Bottom-right: ({x}, {y})")
-
-                self.capture_viewport(self.corner1[0], self.corner1[1], x, y)
-
-                self.viewport_capturing = False
-                self.show_position = True
-                print("\nReady - Press 'S' for template, 'V' for viewport, 'Q' to quit")
+                print("\nReady - Press 'S' for template, 'Q' to quit")
     
     def start(self):
         from pynput import mouse
-        
+
         print("=" * 60)
         print("TEMPLATE CAPTURE TOOL - HOTKEY MODE")
         print("=" * 60)
         print("\nInstructions:")
         print("  - Press 'S' to capture a template region")
-        print("  - Press 'V' to capture viewport (game area boundaries)")
         print("  - Click top-left corner, then bottom-right corner")
         print("  - Press 'Q' to quit and save")
-        print("\nReady - Press 'S' for template, 'V' for viewport")
+        print("\nReady - Press 'S' for template, 'Q' to quit")
         print("=" * 60 + "\n")
         
         kb_listener = keyboard.Listener(on_press=self.on_press) # type: ignore

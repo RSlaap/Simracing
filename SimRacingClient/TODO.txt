@@ -1,0 +1,14 @@
+- Set up pcs: 
+    - Zet namen (1 tot 4)
+    - Pc 1 mclaren en silverstone
+    - Pc 2 mercedes en Hongarije
+    - Pc 3 ferrari en Spa belgie
+    - Pc 4 Red bull en zandvoort.
+
+- Autostart cammus on startup + configure
+- vergroot orchestrator lettertype 
+- Figure out how to setup multiplay
+
+- Change orchestrator to:
+    - Receive more information about clients (add IP)
+    - Figure out best way to let clients show what they are doing. 

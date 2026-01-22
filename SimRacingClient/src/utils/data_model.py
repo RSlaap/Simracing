@@ -21,37 +21,6 @@ Role = Literal['host', 'join', 'singleplayer']
 # Navigation Template Models (from screen_navigator.py)
 # ============================================================================
 
-class Viewport(BaseModel):
-    """
-    Defines a viewport region for template matching in relative coordinates.
-
-    Used when the game doesn't fill the entire screen (e.g., 16:9 game on ultra-wide monitor).
-    Template coordinates are interpreted relative to this viewport rather than the full screen.
-
-    Attributes:
-        x1: Left edge of viewport (0.0 = left screen edge, 1.0 = right screen edge)
-        y1: Top edge of viewport (0.0 = top screen edge, 1.0 = bottom screen edge)
-        x2: Right edge of viewport (0.0 = left screen edge, 1.0 = right screen edge)
-        y2: Bottom edge of viewport (0.0 = top screen edge, 1.0 = bottom screen edge)
-    """
-    x1: float = Field(..., ge=0.0, le=1.0, description="Left edge of viewport (0.0-1.0)")
-    y1: float = Field(..., ge=0.0, le=1.0, description="Top edge of viewport (0.0-1.0)")
-    x2: float = Field(..., ge=0.0, le=1.0, description="Right edge of viewport (0.0-1.0)")
-    y2: float = Field(..., ge=0.0, le=1.0, description="Bottom edge of viewport (0.0-1.0)")
-
-    @validator('x2')
-    def x2_must_be_greater_than_x1(cls, v, values):
-        if 'x1' in values and v <= values['x1']:
-            raise ValueError('x2 must be greater than x1')
-        return v
-
-    @validator('y2')
-    def y2_must_be_greater_than_y1(cls, v, values):
-        if 'y1' in values and v <= values['y1']:
-            raise ValueError('y2 must be greater than y1')
-        return v
-
-
 class StepOption(BaseModel):
     """
     A single template matching option within a navigation step.
@@ -183,7 +152,6 @@ class NavigationConfig(BaseModel):
         action_delay: Delay between sequential key presses in seconds
         search_margin: Percentage of screen size to add as search margin (0.0-1.0, default 0.05 = 5%)
         matching_method: OpenCV template matching method name (default: "TM_CCOEFF_NORMED")
-        viewport: Optional viewport for coordinate transformation. If None, uses fullscreen.
         navigation_sequence: The loaded sequence of steps to execute
     """
     template_dir: str = Field(..., description="Directory containing template images (relative to templates base)")
@@ -193,7 +161,6 @@ class NavigationConfig(BaseModel):
     action_delay: float = Field(default=0.2, ge=0.0, description="Delay between sequential key presses in seconds")
     search_margin: float = Field(default=0.05, ge=0.0, le=1.0, description="Percentage of screen size to add as search margin (0.05 = 5%)")
     matching_method: str = Field(default="TM_CCOEFF_NORMED", description="OpenCV template matching method")
-    viewport: Optional[Viewport] = Field(default=None, description="Optional viewport for coordinate transformation. If None, uses fullscreen.")
     navigation_sequence: NavigationSequence = Field(..., description="The navigation sequence to execute")
 
 
