@@ -447,7 +447,8 @@ def start_multiplayer():
                 json={
                     "game": game,
                     "session_id": session_id,
-                    "role": role
+                    "role": role,
+                    "player_count": len(slot_numbers)
                 },
                 timeout=5
             )

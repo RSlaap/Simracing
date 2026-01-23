@@ -66,6 +66,23 @@ class GameRegistry:
                             action_delay = config_data.get('action_delay', 0.2)
                             nav_seq_file = config_data['navigation_sequence_path']
 
+                            # Check if path contains {n} placeholder - defer loading
+                            if "{n}" in nav_seq_file:
+                                logger.debug(f"  Deferred loading for dynamic path: {nav_seq_file}")
+                                nav_config = NavigationConfig(
+                                    template_dir=template_dir,
+                                    template_threshold=template_threshold,
+                                    max_retries=max_retries,
+                                    retry_delay=retry_delay,
+                                    action_delay=action_delay,
+                                    navigation_sequence=None,  # Defer loading
+                                    navigation_sequence_path=nav_seq_file
+                                )
+                                nav_config._template_base = template_base  # Store for later resolution
+                                role_configs.append(nav_config)
+                                logger.debug(f"  Registered deferred config {config_index+1} for role '{role}' (path: {nav_seq_file})")
+                                continue
+
                             # Resolve navigation sequence file path (relative to template_base)
                             nav_seq_path = template_base / nav_seq_file
 
@@ -85,7 +102,8 @@ class GameRegistry:
                                 max_retries=max_retries,
                                 retry_delay=retry_delay,
                                 action_delay=action_delay,
-                                navigation_sequence=nav_sequence
+                                navigation_sequence=nav_sequence,
+                                navigation_sequence_path=nav_seq_file
                             )
 
                             role_configs.append(nav_config)

@@ -15,8 +15,8 @@ Usage:
     config = GAME_REGISTRY.get('f1_22')
 """
 
-from .registry import GAME_REGISTRY, GameConfig, NavigationConfig
+from .registry import GAME_REGISTRY, GameConfig, NavigationConfig, Role
 from .launcher import launch
 
 # Expose public API
-__all__ = ['GAME_REGISTRY', 'GameConfig', 'NavigationConfig', 'launch']
+__all__ = ['GAME_REGISTRY', 'GameConfig', 'NavigationConfig', 'launch', 'Role']

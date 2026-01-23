@@ -7,6 +7,7 @@ providing centralized data validation and type safety.
 
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Union
+import json
 from pydantic import BaseModel, Field, validator
 
 
@@ -166,6 +167,9 @@ class NavigationConfig(BaseModel):
     Combines execution parameters from config.json with a loaded NavigationSequence.
     Multiple NavigationConfigs can exist per role for different strategies/tracks/modes.
 
+    Supports deferred loading for dynamic paths containing {n} placeholder (resolved at runtime
+    based on player_count).
+
     Attributes:
         template_dir: Directory containing template images (relative to templates base)
         template_threshold: Template matching threshold (0.0-1.0)
@@ -174,7 +178,9 @@ class NavigationConfig(BaseModel):
         action_delay: Delay between sequential key presses in seconds
         search_margin: Percentage of screen size to add as search margin (0.0-1.0, default 0.05 = 5%)
         matching_method: OpenCV template matching method name (default: "TM_CCOEFF_NORMED")
-        navigation_sequence: The loaded sequence of steps to execute
+        navigation_sequence: The loaded sequence of steps to execute (can be None if deferred)
+        navigation_sequence_path: Raw path from config (may contain {n} placeholder)
+        _template_base: Internal path to template base directory (set by registry for deferred loading)
     """
     template_dir: str = Field(..., description="Directory containing template images (relative to templates base)")
     template_threshold: float = Field(..., ge=0.0, le=1.0, description="Template matching threshold (0.0-1.0)")
@@ -183,7 +189,48 @@ class NavigationConfig(BaseModel):
     action_delay: float = Field(default=0.2, ge=0.0, description="Delay between sequential key presses in seconds")
     search_margin: float = Field(default=0.05, ge=0.0, le=1.0, description="Percentage of screen size to add as search margin (0.05 = 5%)")
     matching_method: str = Field(default="TM_CCOEFF_NORMED", description="OpenCV template matching method")
-    navigation_sequence: NavigationSequence = Field(..., description="The navigation sequence to execute")
+    navigation_sequence: Optional[NavigationSequence] = Field(default=None, description="The navigation sequence to execute (None if deferred)")
+    navigation_sequence_path: Optional[str] = Field(default=None, description="Raw path from config (may contain {n} placeholder)")
+    _template_base: Optional[Path] = None  # Set by registry for deferred loading
+
+    class Config:
+        underscore_attrs_are_private = True
+
+    def resolve_sequence(self, player_count: Optional[int] = None) -> None:
+        """
+        Load navigation sequence, resolving {n} placeholder if present.
+
+        Args:
+            player_count: Number of players (required if path contains {n})
+
+        Raises:
+            ValueError: If path contains {n} but no player_count provided
+            FileNotFoundError: If resolved navigation sequence file doesn't exist
+        """
+        if self.navigation_sequence is not None:
+            return  # Already loaded
+
+        if not self.navigation_sequence_path:
+            raise ValueError("No navigation_sequence_path to resolve")
+
+        path = self.navigation_sequence_path
+        if "{n}" in path:
+            if player_count is None:
+                raise ValueError(f"Path contains {{n}} but no player_count provided: {path}")
+            path = path.replace("{n}", str(player_count))
+
+        if self._template_base is None:
+            raise ValueError("_template_base not set - cannot resolve navigation sequence")
+
+        full_path = self._template_base / path
+        if not full_path.exists():
+            raise FileNotFoundError(f"Navigation sequence file not found: {full_path}")
+
+        with open(full_path, 'r') as f:
+            steps_data = json.load(f)
+
+        steps = [Step(**step_data) for step_data in steps_data]
+        self.navigation_sequence = NavigationSequence(steps=steps)
 
 
 class GameConfig(BaseModel):
@@ -204,18 +251,21 @@ class GameConfig(BaseModel):
     class Config:
         arbitrary_types_allowed = True  # Allow Path type
 
-    def get_navigation_configs(self, role: Role) -> List[NavigationConfig]:
+    def get_navigation_configs(self, role: Role, player_count: Optional[int] = None) -> List[NavigationConfig]:
         """
         Get all navigation configurations for the specified role.
 
+        Resolves any deferred configs (those with {n} placeholder) using player_count.
+
         Args:
             role: Either 'host' or 'join'
+            player_count: Number of players (required if any config path contains {n})
 
         Returns:
             List of NavigationConfig for the specified role
 
         Raises:
-            ValueError: If role is not configured
+            ValueError: If role is not configured or deferred config cannot be resolved
         """
         if role not in self.navigations:
             available = list(self.navigations.keys())
@@ -223,9 +273,15 @@ class GameConfig(BaseModel):
                 f"No navigation configs for role '{role}' in game '{self.game_id}'. "
                 f"Available roles: {available}"
             )
-        print("*"*70)
-        print(self.navigations[role])
-        return self.navigations[role]
+
+        configs = self.navigations[role]
+
+        # Resolve any deferred configs with player_count
+        for config in configs:
+            if config.navigation_sequence is None and config.navigation_sequence_path:
+                config.resolve_sequence(player_count)
+
+        return configs
 
     def get_navigation_config(self, role: Role, index: int = 0) -> NavigationConfig:
         """

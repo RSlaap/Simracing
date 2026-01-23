@@ -101,7 +101,8 @@ def execute_pre_launch_config(config: PreLaunchConfig, template_base_dir: str) -
     return True
 
 
-def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = None) -> bool:
+def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = None,
+           player_count: Optional[int] = None) -> bool:
     """
     Launch a game and execute role-based navigation.
 
@@ -109,6 +110,7 @@ def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = N
         game_id: Game identifier (e.g., 'f1_22', 'acc')
         role: Either 'host' or 'join'
         cancel_event: Optional threading.Event to signal cancellation
+        player_count: Optional player count for resolving dynamic navigation paths
 
     Returns:
         bool: True if launch and navigation successful, False otherwise
@@ -151,8 +153,8 @@ def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = N
     if not _wait_and_focus_window(config.window_title, max_attempts=10):
         logger.warning(f"Could not focus {config.name} window, continuing anyway...")
 
-    logger.info(f"Loading navigation configs for role: '{role}'")
-    nav_configs = config.get_navigation_configs(role)
+    logger.info(f"Loading navigation configs for role: '{role}' (player_count={player_count})")
+    nav_configs = config.get_navigation_configs(role, player_count=player_count)
     logger.info(f"  Found {len(nav_configs)} navigation config(s)")
 
     # Execute all navigation configs in sequence

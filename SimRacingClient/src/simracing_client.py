@@ -6,23 +6,21 @@ _src_dir = Path(__file__).parent.resolve()
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
-from flask import Flask, request, jsonify
-from typing import Dict, Optional
 import json
 import threading
 import time
 import requests
+from flask import Flask, request, jsonify
+from typing import Optional
 from utils.networking import get_local_ip, register_mdns_service
-from game_handling import launch
 from utils.process import terminate_process, is_process_running
-from game_handling.registry import GAME_REGISTRY, Role
 from utils.monitoring import get_logger, setup_logging
 from utils.data_model import MachineConfig
+from game_handling import launch, GAME_REGISTRY, Role
 
 # Initialize logging with file output
 log_file = Path(__file__).parent.parent / "scripts" / "simracing_client.log"
 setup_logging(log_file=log_file, console=True)
-
 logger = get_logger(__name__)
 
 app = Flask(__name__)
@@ -41,13 +39,13 @@ SETUP_STATE = {
     "status": "idle",
     "current_game": None,
     "session_id": None,
-    "role": None
+    "role": None,
+    "player_count": None
 }
 
 def _send_heartbeat():
     """Send periodic status updates to the orchestrator"""
     logger.info("Heartbeat service started")
-
     while not stop_heartbeat.is_set():
         if ORCHESTRATOR_URL and MACHINE_CONFIG:
             try:
@@ -70,10 +68,10 @@ def _send_heartbeat():
                                 SETUP_STATE["current_game"] = None
                                 SETUP_STATE["session_id"] = None
                                 SETUP_STATE["role"] = None
+                                SETUP_STATE["player_count"] = None
                     except ValueError as e:
                         # Game not in registry
                         logger.error(f"Game {SETUP_STATE['current_game']} not found in registry: {e}")
-
                 payload = {
                     "name": MACHINE_CONFIG.name,
                     "id": MACHINE_CONFIG.id,
@@ -84,52 +82,40 @@ def _send_heartbeat():
                     "session_id": SETUP_STATE["session_id"],
                     "timestamp": time.time()
                 }
-
                 logger.info(
                     f"Sending heartbeat to {ORCHESTRATOR_URL} | "
                     f"Status: {payload['status']} | "
                     f"Game: {payload['current_game'] or 'None'} | "
                 )
-
                 response = requests.post(
                     f"{ORCHESTRATOR_URL}/api/heartbeat",
                     json=payload,
                     timeout=2
                 )
-
                 if response.status_code == 200:
                     logger.info(f"Heartbeat acknowledged by orchestrator")
                 else:
                     logger.warning(f"Heartbeat failed: HTTP {response.status_code}")
-
             except requests.exceptions.RequestException as e:
                 logger.error(f"Heartbeat error: {e}")
-
         stop_heartbeat.wait(HEARTBEAT_INTERVAL)
-
     logger.info("Heartbeat service stopped")
 
 @app.route('/api/register_orchestrator', methods=['POST'])
 def register_orchestrator():
     """Register the orchestrator URL to send heartbeats to"""
     global ORCHESTRATOR_URL, heartbeat_thread
-    
-    data = request.json
-    orchestrator_url = data.get('orchestrator_url')
-    
+    orchestrator_url = request.json.get('orchestrator_url')
     if not orchestrator_url:
         return jsonify({"error": "Missing orchestrator_url"}), 400
     
     ORCHESTRATOR_URL = orchestrator_url.rstrip('/')
-    
     logger.info(f"Orchestrator registered: {ORCHESTRATOR_URL}")
-    
     if heartbeat_thread is None or not heartbeat_thread.is_alive():
         stop_heartbeat.clear()
         heartbeat_thread = threading.Thread(target=_send_heartbeat, daemon=True)
         heartbeat_thread.start()
         logger.info(f"Heartbeat thread started (interval: {HEARTBEAT_INTERVAL}s)")
-    
     return jsonify({
         "status": "success",
         "message": f"Orchestrator registered: {ORCHESTRATOR_URL}",
@@ -141,17 +127,18 @@ def register_orchestrator():
 def configure():
     """Receive configuration from orchestrator"""
     data = request.json
-
     game = data.get('game')
     session_id = data.get('session_id')
     role = data.get('role')
+    player_count = data.get('player_count')  # Optional for backward compatibility
 
     SETUP_STATE["current_game"] = game
     SETUP_STATE["session_id"] = session_id
     SETUP_STATE["role"] = role
+    SETUP_STATE["player_count"] = player_count
     SETUP_STATE["status"] = "configured"
 
-    logger.info(f"Configured: Game={game}, Session={session_id}, Role={role}")
+    logger.info(f"Configured: Game={game}, Session={session_id}, Role={role}, PlayerCount={player_count}")
 
     return jsonify({
         "status": "success",
@@ -159,14 +146,14 @@ def configure():
         "state": SETUP_STATE
     })
 
-def _launch_game_async(game: str, role: Role):
+def _launch_game_async(game: str, role: Role, player_count: Optional[int] = None):
     """Background thread function to launch game"""
     try:
         # Clear any previous cancellation signal before starting
         cancel_navigation.clear()
 
-        logger.info(f"Background thread: launching {game} as {role}")
-        success = launch(game, role, cancel_event=cancel_navigation)
+        logger.info(f"Background thread: launching {game} as {role} with player_count={player_count}")
+        success = launch(game, role, cancel_event=cancel_navigation, player_count=player_count)
 
         if success:
             SETUP_STATE["status"] = "running"
@@ -178,6 +165,7 @@ def _launch_game_async(game: str, role: Role):
             SETUP_STATE["current_game"] = None
             SETUP_STATE["session_id"] = None
             SETUP_STATE["role"] = None
+            SETUP_STATE["player_count"] = None
 
     except Exception as e:
         logger.error(f"Background thread: Error starting game: {e}")
@@ -186,6 +174,7 @@ def _launch_game_async(game: str, role: Role):
         SETUP_STATE["current_game"] = None
         SETUP_STATE["session_id"] = None
         SETUP_STATE["role"] = None
+        SETUP_STATE["player_count"] = None
 
 
 @app.route('/api/start', methods=['POST'])
@@ -210,9 +199,10 @@ def start_game():
     SETUP_STATE["status"] = "starting"
 
     # Launch game in background thread to avoid blocking the response
+    player_count = SETUP_STATE.get("player_count")
     launch_thread = threading.Thread(
         target=_launch_game_async,
-        args=(game, role),
+        args=(game, role, player_count),
         daemon=True
     )
     launch_thread.start()
@@ -255,6 +245,7 @@ def stop_game():
         SETUP_STATE["current_game"] = None
         SETUP_STATE["session_id"] = None
         SETUP_STATE["role"] = None
+        SETUP_STATE["player_count"] = None
 
         if success:
             logger.info(f"{game} closed successfully, state reset to idle")
@@ -277,6 +268,7 @@ def stop_game():
         SETUP_STATE["current_game"] = None
         SETUP_STATE["session_id"] = None
         SETUP_STATE["role"] = None
+        SETUP_STATE["player_count"] = None
         return jsonify({
             "status": "error",
             "message": f"Error stopping game: {str(e)}"

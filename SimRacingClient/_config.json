@@ -21,6 +21,14 @@
           "retry_delay": 1,
           "action_delay": 0.5,
           "navigation_sequence_path": "F1_22/game_host_template.json"
+        },
+        {   
+          "template_dir": "F1_22",
+          "template_threshold": 0.85,
+          "max_retries": 100,
+          "retry_delay": 1,
+          "action_delay": 0,
+          "navigation_sequence_path": "F1_22/lobby_{n}_players.json"
         }
       ],
       "join": [
