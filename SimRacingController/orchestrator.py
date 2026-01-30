@@ -71,6 +71,17 @@ port = 8000
 
 
 def get_local_ip():
+    # Primary: UDP socket method - most reliable for finding the "outbound" IP
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('192.168.2.1', 80))  # Doesn't actually send packets
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception as e:
+        logger.warning(f"UDP socket method failed: {e}")
+
+    # Fallback: hostname resolution
     try:
         hostname = socket.gethostname()
         ip = socket.gethostbyname(hostname)
@@ -78,16 +89,7 @@ def get_local_ip():
             return ip
     except Exception as e:
         logger.warning(f"Hostname resolution failed: {e}")
-    
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('192.168.2.1', 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception as e:
-        logger.error(f"Failed to connect to router: {e}")
-    
+
     raise RuntimeError(
         "Could not determine local IP address. "
         "Please check network connection and configuration."

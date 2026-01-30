@@ -109,7 +109,13 @@ def register_orchestrator():
     orchestrator_url = request.json.get('orchestrator_url')
     if not orchestrator_url:
         return jsonify({"error": "Missing orchestrator_url"}), 400
-    
+
+    # Validate it's not our own IP (prevent self-heartbeat loop)
+    my_ip = get_local_ip()
+    if my_ip in orchestrator_url:
+        logger.error(f"Rejected orchestrator registration - URL contains our own IP: {orchestrator_url}")
+        return jsonify({"error": "Cannot register self as orchestrator"}), 400
+
     ORCHESTRATOR_URL = orchestrator_url.rstrip('/')
     logger.info(f"Orchestrator registered: {ORCHESTRATOR_URL}")
     if heartbeat_thread is None or not heartbeat_thread.is_alive():
