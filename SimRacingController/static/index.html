@@ -11,54 +11,64 @@
             box-sizing: border-box;
         }
 
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: linear-gradient(135deg, #0d1f4a 0%, #1a3a7a 100%);
             color: #fff;
-            padding: 20px;
-            min-height: 100vh;
+            padding: 12px;
+            font-size: clamp(14px, 1.3vw, 20px);
+            line-height: 1.3;
         }
 
         .container {
-            max-width: 1800px;
-            margin: 0 auto;
+            max-width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         h1 {
             text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-size: clamp(1.5em, 3vw, 2.5em);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            letter-spacing: 1px;
+            flex-shrink: 0;
         }
 
         /* Slot Pool Area */
         .slot-pool {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.12);
             backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 12px 15px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            flex-shrink: 0;
         }
 
         .slot-pool h2 {
-            margin-bottom: 20px;
-            font-size: 1.5em;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+            font-weight: 700;
         }
 
         .slots-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            min-height: 120px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
         }
 
         /* Slot Cards */
         .slot-card {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 10px;
+            padding: 12px 15px;
+            border: 3px solid rgba(255, 255, 255, 0.4);
             cursor: grab;
             transition: all 0.3s ease;
             user-select: none;
@@ -74,159 +84,172 @@
         }
 
         .slot-card.offline {
-            opacity: 0.6;
+            opacity: 0.5;
             cursor: not-allowed;
-            border-color: rgba(244, 67, 54, 0.5);
+            border-color: #ff6b6b;
+            background: rgba(255, 100, 100, 0.1);
         }
 
         .slot-card.online {
-            border-color: #4CAF50;
+            border-color: #51cf66;
+            box-shadow: 0 0 15px rgba(81, 207, 102, 0.3);
         }
 
         .slot-card.running {
-            border-color: #2196F3;
-            background: rgba(33, 150, 243, 0.2);
+            border-color: #339af0;
+            background: rgba(51, 154, 240, 0.25);
+            box-shadow: 0 0 15px rgba(51, 154, 240, 0.3);
         }
 
         .slot-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
         .slot-number {
-            font-size: 1.4em;
-            font-weight: bold;
+            font-size: 1.2em;
+            font-weight: 800;
         }
 
         .status-dot {
-            width: 14px;
-            height: 14px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
             animation: pulse 2s infinite;
+            border: 2px solid rgba(255,255,255,0.3);
         }
 
         .status-dot.online {
-            background: #4CAF50;
+            background: #51cf66;
+            box-shadow: 0 0 10px #51cf66;
         }
 
         .status-dot.offline {
-            background: #f44336;
+            background: #ff6b6b;
             animation: none;
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px #51cf66; }
+            50% { opacity: 0.6; box-shadow: 0 0 5px #51cf66; }
         }
 
         .client-name {
             font-size: 1.1em;
-            font-weight: 600;
-            margin-bottom: 5px;
+            font-weight: 700;
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .client-status {
-            font-size: 0.85em;
-            opacity: 0.8;
+            font-size: 0.95em;
+            opacity: 0.9;
         }
 
         .current-game {
-            margin-top: 8px;
+            margin-top: 6px;
             padding: 5px 8px;
-            background: rgba(33, 150, 243, 0.4);
-            border-radius: 5px;
-            font-size: 0.85em;
+            background: rgba(51, 154, 240, 0.5);
+            border-radius: 6px;
+            font-size: 0.9em;
             font-weight: bold;
         }
 
-        /* Game Areas Layout */
-        .singleplayer-areas {
+        /* Game Areas Container - fills remaining space */
+        .game-areas-wrapper {
+            flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .multiplayer-areas {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        @media (max-width: 1200px) {
-            .multiplayer-areas {
-                grid-template-columns: 1fr;
-            }
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            min-height: 0;
         }
 
         /* Game Area Drop Zone */
         .game-area {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            border: 3px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 12px;
+            border: 3px dashed rgba(255, 255, 255, 0.4);
             transition: all 0.3s ease;
-            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
         }
 
         .game-area.drag-over {
-            border-color: #4CAF50;
-            background: rgba(76, 175, 80, 0.2);
-            transform: scale(1.02);
+            border-color: #51cf66;
+            background: rgba(81, 207, 102, 0.25);
+            transform: scale(1.01);
         }
 
         .game-area-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            flex-shrink: 0;
         }
 
         .game-title {
-            font-size: 1.4em;
-            font-weight: bold;
+            font-size: 1.15em;
+            font-weight: 800;
         }
 
         .game-icon {
-            font-size: 2em;
+            font-size: 1.5em;
         }
 
         .assigned-slots {
-            min-height: 150px;
-            margin-bottom: 20px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            margin: 8px 0;
+            display: flex;
+            flex-direction: column;
         }
 
         .assigned-slots h3 {
-            font-size: 1em;
-            margin-bottom: 10px;
-            opacity: 0.8;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+            opacity: 0.9;
+            font-weight: 600;
         }
 
         .assigned-slot-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 6px;
+            flex: 1;
+            min-height: 0;
         }
 
         .assigned-slot-item {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 8px;
             border-radius: 8px;
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
+            justify-content: center;
             align-items: center;
+            text-align: center;
             cursor: grab;
             transition: all 0.2s;
+            font-size: 0.95em;
+            border: 2px solid rgba(255,255,255,0.2);
+            min-height: 0;
+            overflow: hidden;
         }
 
         .assigned-slot-item:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.22);
         }
 
         .assigned-slot-item:active {
@@ -238,127 +261,159 @@
         }
 
         .assigned-slot-info {
-            flex: 1;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            margin-bottom: 4px;
         }
 
         .assigned-slot-controls {
             display: flex;
-            gap: 8px;
-            margin-left: 10px;
+            gap: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .slot-btn {
-            padding: 6px 12px;
+            padding: 6px 10px;
             border: none;
-            border-radius: 6px;
+            border-radius: 5px;
             font-size: 0.8em;
-            font-weight: bold;
+            font-weight: 800;
             cursor: pointer;
             transition: all 0.2s;
             text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
 
         .slot-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
 
         .slot-btn.start {
-            background: #4CAF50;
+            background: #40c057;
             color: white;
+            box-shadow: 0 3px 8px rgba(64, 192, 87, 0.4);
         }
 
         .slot-btn.start:hover:not(:disabled) {
-            background: #45a049;
+            background: #37b24d;
+            transform: scale(1.05);
         }
 
         .slot-btn.stop {
-            background: #f44336;
+            background: #fa5252;
             color: white;
+            box-shadow: 0 3px 8px rgba(250, 82, 82, 0.4);
         }
 
         .slot-btn.stop:hover:not(:disabled) {
-            background: #da190b;
+            background: #e03131;
+            transform: scale(1.05);
         }
 
         .assigned-slot-item .role-badge {
-            padding: 3px 8px;
-            background: rgba(33, 150, 243, 0.4);
-            border-radius: 4px;
-            font-size: 0.75em;
-            font-weight: bold;
+            padding: 5px 10px;
+            background: rgba(51, 154, 240, 0.5);
+            border-radius: 5px;
+            font-size: 0.85em;
+            font-weight: 800;
             text-transform: uppercase;
         }
 
         .assigned-slot-item .role-badge.host {
-            background: rgba(255, 193, 7, 0.4);
+            background: rgba(255, 193, 7, 0.6);
+            color: #fff;
         }
 
         .area-controls {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            flex-shrink: 0;
+            margin-top: auto;
         }
 
         .area-btn {
             flex: 1;
-            padding: 12px;
+            padding: 12px 8px;
             border: none;
             border-radius: 8px;
-            font-weight: bold;
+            font-weight: 800;
             cursor: pointer;
             transition: all 0.3s;
             text-transform: uppercase;
             font-size: 0.95em;
+            letter-spacing: 0.5px;
         }
 
         .area-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
 
         .area-btn.start {
-            background: #4CAF50;
+            background: #40c057;
             color: white;
+            box-shadow: 0 4px 12px rgba(64, 192, 87, 0.4);
         }
 
         .area-btn.start:hover:not(:disabled) {
-            background: #45a049;
-            transform: scale(1.05);
+            background: #37b24d;
+            transform: scale(1.02);
         }
 
         .area-btn.stop {
-            background: #f44336;
+            background: #fa5252;
             color: white;
+            box-shadow: 0 4px 12px rgba(250, 82, 82, 0.4);
         }
 
         .area-btn.stop:hover:not(:disabled) {
-            background: #da190b;
-            transform: scale(1.05);
+            background: #e03131;
+            transform: scale(1.02);
         }
 
         .area-info {
-            padding: 10px;
-            background: rgba(33, 150, 243, 0.2);
-            border-radius: 8px;
-            margin-bottom: 15px;
+            padding: 8px;
+            background: rgba(51, 154, 240, 0.3);
+            border-radius: 6px;
+            margin: 8px 0;
             font-size: 0.9em;
             text-align: center;
+            font-weight: 600;
+            flex-shrink: 0;
         }
 
         /* Empty state */
         .empty-state {
+            grid-column: 1 / -1;
+            grid-row: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             text-align: center;
-            padding: 40px 20px;
-            opacity: 0.5;
+            padding: 20px 10px;
+            opacity: 0.6;
             font-style: italic;
+            font-size: 1em;
         }
 
-        /* Message */
+        /* Message - fixed at bottom */
         .message {
-            padding: 15px;
+            position: fixed;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 25px;
             border-radius: 10px;
-            margin-top: 20px;
             display: none;
+            font-size: 1em;
+            font-weight: 600;
+            z-index: 1000;
+            max-width: 90%;
         }
 
         .message.show {
@@ -366,20 +421,65 @@
         }
 
         .message.success {
-            background: rgba(76, 175, 80, 0.3);
-            border: 2px solid #4CAF50;
+            background: rgba(64, 192, 87, 0.9);
+            border: 2px solid #40c057;
         }
 
         .message.error {
-            background: rgba(244, 67, 54, 0.3);
-            border: 2px solid #f44336;
+            background: rgba(250, 82, 82, 0.9);
+            border: 2px solid #fa5252;
         }
 
-        /* Responsive */
-        @media (max-width: 1200px) {
-            .singleplayer-areas {
-                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        /* Hide separate singleplayer/multiplayer wrappers - we use unified grid now */
+        .singleplayer-areas,
+        .multiplayer-areas {
+            display: contents;
+        }
+
+        /* Responsive for smaller screens */
+        @media (max-width: 1400px) {
+            .game-areas-wrapper {
+                grid-template-columns: repeat(3, 1fr);
             }
+        }
+
+        @media (max-width: 1000px) {
+            .game-areas-wrapper {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .slots-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 700px) {
+            .game-areas-wrapper {
+                grid-template-columns: 1fr;
+            }
+
+            .slots-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Scrollbar styling for assigned slots */
+        .assigned-slots::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .assigned-slots::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+
+        .assigned-slots::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+        }
+
+        .assigned-slots::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.5);
         }
     </style>
 </head>
@@ -395,15 +495,14 @@
             </div>
         </div>
 
-        <!-- Singleplayer Game Areas -->
-        <div class="singleplayer-areas">
+        <!-- All Game Areas in unified grid -->
+        <div class="game-areas-wrapper">
             <!-- F1 22 Singleplayer -->
             <div class="game-area" data-game="f1_22" data-mode="singleplayer" data-area-id="f1_sp">
                 <div class="game-area-header">
-                    <div class="game-title">F1 22 Singleplayer</div>
+                    <div class="game-title">F1 22 Solo</div>
                 </div>
                 <div class="assigned-slots">
-                    <h3>Assigned Slots:</h3>
                     <div class="assigned-slot-list" id="slots-f1_sp">
                         <div class="empty-state">Drag slots here</div>
                     </div>
@@ -413,10 +512,9 @@
             <!-- ACC Singleplayer -->
             <div class="game-area" data-game="acc" data-mode="singleplayer" data-area-id="acc_sp">
                 <div class="game-area-header">
-                    <div class="game-title">ACC Singleplayer</div>
+                    <div class="game-title">ACC Solo</div>
                 </div>
                 <div class="assigned-slots">
-                    <h3>Assigned Slots:</h3>
                     <div class="assigned-slot-list" id="slots-acc_sp">
                         <div class="empty-state">Drag slots here</div>
                     </div>
@@ -426,52 +524,46 @@
             <!-- DIRT Rally 2 Singleplayer -->
             <div class="game-area" data-game="dirt_rally_2" data-mode="singleplayer" data-area-id="dirt_sp">
                 <div class="game-area-header">
-                    <div class="game-title">DIRT Rally 2 Singleplayer</div>
+                    <div class="game-title">DIRT Rally 2 Solo</div>
                 </div>
                 <div class="assigned-slots">
-                    <h3>Assigned Slots:</h3>
                     <div class="assigned-slot-list" id="slots-dirt_sp">
                         <div class="empty-state">Drag slots here</div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Multiplayer Game Areas -->
-        <div class="multiplayer-areas">
             <!-- F1 22 Multiplayer Area 1 -->
             <div class="game-area" data-game="f1_22" data-mode="multiplayer" data-area-id="f1_mp1">
                 <div class="game-area-header">
-                    <div class="game-title">F1 22 Multiplayer 1</div>
+                    <div class="game-title">F1 22 Multi 1</div>
                 </div>
-                <div class="area-info">Requires 2+ slots. First slot = Host</div>
+                <div class="area-info">2+ slots · First = Host</div>
                 <div class="assigned-slots">
-                    <h3>Assigned Slots:</h3>
                     <div class="assigned-slot-list" id="slots-f1_mp1">
-                        <div class="empty-state">Drag 2+ slots here</div>
+                        <div class="empty-state">Drag 2+ slots</div>
                     </div>
                 </div>
                 <div class="area-controls">
-                    <button class="area-btn start" onclick="startArea('f1_mp1')" disabled>Start Session</button>
-                    <button class="area-btn stop" onclick="stopArea('f1_mp1')" disabled>Stop All</button>
+                    <button class="area-btn start" onclick="startArea('f1_mp1')" disabled>Start</button>
+                    <button class="area-btn stop" onclick="stopArea('f1_mp1')" disabled>Stop</button>
                 </div>
             </div>
 
             <!-- F1 22 Multiplayer Area 2 -->
             <div class="game-area" data-game="f1_22" data-mode="multiplayer" data-area-id="f1_mp2">
                 <div class="game-area-header">
-                    <div class="game-title">F1 22 Multiplayer 2</div>
+                    <div class="game-title">F1 22 Multi 2</div>
                 </div>
-                <div class="area-info">Requires 2+ slots. First slot = Host</div>
+                <div class="area-info">2+ slots · First = Host</div>
                 <div class="assigned-slots">
-                    <h3>Assigned Slots:</h3>
                     <div class="assigned-slot-list" id="slots-f1_mp2">
-                        <div class="empty-state">Drag 2+ slots here</div>
+                        <div class="empty-state">Drag 2+ slots</div>
                     </div>
                 </div>
                 <div class="area-controls">
-                    <button class="area-btn start" onclick="startArea('f1_mp2')" disabled>Start Session</button>
-                    <button class="area-btn stop" onclick="stopArea('f1_mp2')" disabled>Stop All</button>
+                    <button class="area-btn start" onclick="startArea('f1_mp2')" disabled>Start</button>
+                    <button class="area-btn stop" onclick="stopArea('f1_mp2')" disabled>Stop</button>
                 </div>
             </div>
         </div>
@@ -729,7 +821,7 @@
             if (assignedSlots.length === 0) {
                 const emptyState = document.createElement('div');
                 emptyState.className = 'empty-state';
-                emptyState.textContent = isMultiplayer ? 'Drag 2+ slots here' : 'Drag slots here';
+                emptyState.textContent = isMultiplayer ? 'Drag 2+ slots' : 'Drag slots here';
                 container.appendChild(emptyState);
             } else {
                 assignedSlots.forEach((slotNum, index) => {
