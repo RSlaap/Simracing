@@ -11,6 +11,35 @@ import threading
 import time
 import requests
 from flask import Flask, request, jsonify
+
+
+def disable_quickedit():
+    """Disable QuickEdit mode on Windows to prevent console click from pausing the process."""
+    if sys.platform != 'win32':
+        return
+
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+
+        # Get handle to stdin
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+
+        # Get current console mode
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+
+        # Disable QuickEdit (0x0040) and Insert Mode (0x0020)
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        ENABLE_INSERT_MODE = 0x0020
+        mode.value &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_INSERT_MODE)
+
+        # Set new console mode
+        kernel32.SetConsoleMode(handle, mode)
+    except Exception:
+        pass  # Silently fail on non-Windows or if it doesn't work
+
+
 from typing import Optional
 from utils.networking import get_local_ip, register_mdns_service
 from utils.process import terminate_process, is_process_running
@@ -286,6 +315,8 @@ def stop_game():
 
 def _start_server(config: dict):
     global MACHINE_CONFIG
+
+    disable_quickedit()
 
     # Create MachineConfig with values from config file and runtime values
     MACHINE_CONFIG = MachineConfig(

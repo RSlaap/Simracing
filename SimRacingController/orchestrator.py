@@ -8,9 +8,37 @@ from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 import requests
 import time
 import socket
+import sys
 from pydantic import BaseModel
 import logging
 import threading
+
+
+def disable_quickedit():
+    """Disable QuickEdit mode on Windows to prevent console click from pausing the process."""
+    if sys.platform != 'win32':
+        return
+
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+
+        # Get handle to stdin
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+
+        # Get current console mode
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+
+        # Disable QuickEdit (0x0040) and Insert Mode (0x0020)
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        ENABLE_INSERT_MODE = 0x0020
+        mode.value &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_INSERT_MODE)
+
+        # Set new console mode
+        kernel32.SetConsoleMode(handle, mode)
+    except Exception:
+        pass  # Silently fail on non-Windows or if it doesn't work
 
 logging.basicConfig(
     level=logging.INFO,
@@ -560,6 +588,8 @@ def register_setup():
 
 def main():
     global service_browser_listener
+
+    disable_quickedit()
 
     zeroconf = Zeroconf()
     service_browser_listener = SetupListener()
