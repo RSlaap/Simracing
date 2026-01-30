@@ -9,7 +9,7 @@ set "SSD_ROOT=%~dp0..\.."
 echo Creating startup shortcut...
 set "STARTUP_SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Launch SimRacing Project.lnk"
 
-powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%STARTUP_SHORTCUT%'); $s.TargetPath = '%SSD_ROOT%\scripts\launcher.bat'; $s.WorkingDirectory = '%SSD_ROOT%'; $s.Save()"
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%STARTUP_SHORTCUT%'); $s.TargetPath = '%SSD_ROOT%\scripts\launcher.bat'; $s.WorkingDirectory = '%SSD_ROOT%'; $s.WindowStyle = 7; $s.Save()"
 
 if exist "%STARTUP_SHORTCUT%" (
     echo.
