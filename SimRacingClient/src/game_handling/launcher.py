@@ -102,7 +102,7 @@ def execute_pre_launch_config(config: PreLaunchConfig, template_base_dir: str) -
 
 
 def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = None,
-           player_count: Optional[int] = None) -> bool:
+           player_count: Optional[int] = None, host_ip: Optional[str] = None) -> bool:
     """
     Launch a game and execute role-based navigation.
 
@@ -168,14 +168,16 @@ def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = N
             return False
 
         logger.info(f"Executing config {config_index}/{len(nav_configs)}")
-        logger.debug(f"  Template dir: {nav_config.template_dir}")
-        logger.debug(f"  Threshold: {nav_config.template_threshold}, Max retries: {nav_config.max_retries}")
-        logger.debug(f"  Steps: {len(nav_config.navigation_sequence.steps)}")
+        logger.info(f"  Template dir: {nav_config.template_dir}")
+        logger.info(f"  Threshold: {nav_config.template_threshold}, Max retries: {nav_config.max_retries}")
+        logger.info(f"  Steps: {len(nav_config.navigation_sequence.steps)}")
+        logger.info(f"  Host ip: {host_ip}")
 
         success = load_and_execute_navigation(
             nav_config=nav_config,
             template_base_dir=str(template_base_dir),
-            cancel_event=cancel_event
+            cancel_event=cancel_event,
+            context={"host_ip": host_ip} if host_ip else None
         )
 
         if not success:

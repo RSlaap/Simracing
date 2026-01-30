@@ -1,0 +1,38 @@
+{
+  "f1_22": {
+    "name": "F1 22",
+    "executable_path": "../Software/F1 22 Champions Edition/F1_22.exe",
+    "process_name": "F1_22.exe",
+    "window_title": "F1 22",
+    "navigation_config": {
+      "singleplayer": [
+        {
+          "template_dir": "F1_22",
+          "template_threshold": 0.85,
+          "max_retries": 50,
+          "retry_delay": 0.1,
+          "action_delay": 0.1,
+          "navigation_sequence_path": "F1_22/dev/singleplayer_dev.json"
+        }
+      ],
+      "host": [
+        {
+          "template_dir": "F1_22",
+          "template_threshold": 0.85,
+          "max_retries": 50,
+          "retry_delay": 0.1,
+          "action_delay": 0.1,
+          "navigation_sequence_path": "F1_22/game_host_template.json"
+        },
+        {
+          "template_dir": "F1_22",
+          "template_threshold": 0.85,
+          "max_retries": 300,
+          "retry_delay": 1.0,
+          "action_delay": 0.2,
+          "navigation_sequence_path": "F1_22/lobby_{n}_players.json"
+        }
+      ]
+    }
+  }
+}

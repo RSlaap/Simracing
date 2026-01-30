@@ -186,7 +186,8 @@ def execute_navigation_sequence(
     action_delay: float = 0.2,
     search_margin: float = 0.05,
     method: int = cv2.TM_CCOEFF_NORMED,
-    cancel_event: Optional[threading.Event] = None
+    cancel_event: Optional[threading.Event] = None,
+    context: Optional[dict] = None
 ) -> bool:
     """
     Execute a sequence of navigation steps with retry and fallback logic.
@@ -221,7 +222,7 @@ def execute_navigation_sequence(
         matched = attempt_step_options(
             i, step, template_dir,
             threshold, max_retries, retry_delay, action_delay,
-            search_margin, method, cancel_event
+            search_margin, method, cancel_event, context
         )
 
         if not matched:
@@ -336,6 +337,69 @@ def handle_step_failure(
     else:
         return False, consecutive_failures + 1
 
+def parse_ip_to_keypresses(ip_address: str) -> List[str]:
+    """
+    Convert an IP address string to a list of key presses.
+    
+    Args:
+        ip_address: IP address string (e.g., "192.168.1.100")
+    
+    Returns:
+        List of key press strings for pydirectinput
+    
+    Example:
+        >>> parse_ip_to_keypresses("192.168.1.100")
+        ['1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1', '0', '0']
+    """
+    return list(ip_address)
+
+def resolve_key_presses(
+    key_press: Union[str, List[str], None],
+    context: Optional[dict] = None
+) -> Union[str, List[str], None]:
+    """
+    Resolve key presses with variable substitution from context.
+    
+    Args:
+        key_press: Original key press(es) - may contain placeholders like "{host_ip}"
+        context: Dictionary with values for variable substitution
+    
+    Returns:
+        Resolved key press(es) with variables substituted
+    
+    Examples:
+        >>> resolve_key_presses("{host_ip}", {"host_ip": "192.168.1.100"})
+        ['1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1', '0', '0']
+        
+        >>> resolve_key_presses(["down_arrow", "{host_ip}", "enter"], {"host_ip": "192.168.1.100"})
+        ['down_arrow', '1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1', '0', '0', 'enter']
+    """
+    if key_press is None or context is None:
+        return key_press
+    
+    # Handle single string
+    if isinstance(key_press, str):
+        if key_press.startswith("{") and key_press.endswith("}"):
+            var_name = key_press[1:-1]
+            if var_name == "host_ip" and "host_ip" in context:
+                return parse_ip_to_keypresses(context["host_ip"])
+        return key_press
+    
+    # Handle list of strings
+    if isinstance(key_press, list):
+        resolved = []
+        for press in key_press:
+            if isinstance(press, str) and press.startswith("{") and press.endswith("}"):
+                var_name = press[1:-1]
+                if var_name == "host_ip" and "host_ip" in context:
+                    resolved.extend(parse_ip_to_keypresses(context["host_ip"]))
+                else:
+                    resolved.append(press)
+            else:
+                resolved.append(press)
+        return resolved
+    
+    return key_press
 
 def attempt_step_options(
     step_index: int,
@@ -347,53 +411,40 @@ def attempt_step_options(
     action_delay: float = 0.2,
     search_margin: float = 0.05,
     method: int = cv2.TM_CCOEFF_NORMED,
-    cancel_event: Optional[threading.Event] = None
+    cancel_event: Optional[threading.Event] = None,
+    context: Optional[dict] = None
 ) -> bool:
     """
-    Attempt matching template(s) at this step.
-    Handles both single-option (1 element) and multi-option (multiple elements) steps.
-
-    Args:
-        step_index: The index of this step in the sequence
-        step: Step Pydantic model instance with step.options (list of StepOption)
-        template_dir: Base directory for template images
-        threshold: Matching threshold for template matching
-        max_retries: Maximum number of retry attempts
-        retry_delay: Global delay between retry attempts (can be overridden per-step)
-        action_delay: Global delay after success and between key presses (can be overridden per-step)
-        search_margin: Percentage of screen size to add as search margin
-        method: OpenCV template matching method
-        cancel_event: Optional threading.Event to signal cancellation
-
-    Returns:
-        True if any option matched and action was executed, False otherwise
+    Attempt matching template(s) at this step with context-aware key press resolution.
     """
     options = step.options
     is_multi_option = len(options) > 1
 
     for attempt in range(max_retries):
-        # Check for cancellation at start of each retry attempt
         if cancel_event and cancel_event.is_set():
             logger.info(f"Step {step_index+1} cancelled during attempt {attempt+1}")
             return False
-        # Try each option in order
+        
         for option_index, option in enumerate(options):
             template_path = option.template
             region = option.region
             center_x, center_y = calculate_region_center(region)
             full_template_path = f"{template_dir}/{template_path}"
 
-            # Calculate effective delays (step-level override or global)
             effective_retry_delay = option.retry_delay if option.retry_delay is not None else retry_delay
             effective_action_delay = option.action_delay if option.action_delay is not None else action_delay
 
-            # BRANCH 1: Press-until-match pattern (press BEFORE check)
-            if option.press_until_match is not None:
+            # Resolve key presses with context (for variable substitution)
+            resolved_key_press = resolve_key_presses(option.key_press, context)
+            resolved_press_until_match = resolve_key_presses(option.press_until_match, context)
+            logger.info(f"********** Pressing {resolved_key_press} with context {context}")
+            # BRANCH 1: Press-until-match pattern
+            if resolved_press_until_match is not None:
                 matched = navigate_press_until_match(
                     template_path=full_template_path,
                     relative_x=center_x,
                     relative_y=center_y,
-                    key_press=option.press_until_match,
+                    key_press=resolved_press_until_match,
                     threshold=threshold,
                     action_delay=effective_action_delay,
                     search_margin=search_margin,
@@ -401,40 +452,36 @@ def attempt_step_options(
                 )
 
                 if matched:
-                    key_display = format_key_display(option.press_until_match)
+                    key_display = format_key_display(resolved_press_until_match)
                     if is_multi_option:
                         logger.info(f"✓ Step {step_index+1} matched option {option_index+1}/{len(options)} after pressing {key_display}")
                     else:
                         logger.info(f"✓ Step {step_index+1} matched after pressing {key_display}")
-                    # Apply action_delay after success (for transitions to next screen)
                     time.sleep(effective_action_delay)
                     return True
 
-            # BRANCH 2: Match-then-press pattern (check THEN press - existing behavior)
+            # BRANCH 2: Match-then-press pattern
             else:
                 matched = navigate_if_template_matches(
                     template_path=full_template_path,
                     relative_x=center_x,
                     relative_y=center_y,
-                    action=lambda kp=option.key_press, ad=effective_action_delay: execute_key_presses(kp, ad),
+                    action=lambda kp=resolved_key_press, ad=effective_action_delay: execute_key_presses(kp, ad),
                     threshold=threshold,
                     search_margin=search_margin,
                     method=method
                 )
 
                 if matched:
-                    key_display = format_key_display(option.key_press)
+                    key_display = format_key_display(resolved_key_press)
                     if is_multi_option:
                         logger.info(f"✓ Step {step_index+1} matched option {option_index+1}/{len(options)} - pressed {key_display}")
                     else:
                         logger.info(f"✓ Step {step_index+1} matched - pressed {key_display}")
-                    # Apply action_delay after success (for transitions to next screen)
                     time.sleep(effective_action_delay)
                     return True
 
-        # No options matched in this attempt - apply retry_delay before next attempt
         if attempt < max_retries - 1:
-            # Use retry_delay from first option if set, otherwise global
             effective_retry = options[0].retry_delay if options[0].retry_delay is not None else retry_delay
             time.sleep(effective_retry)
 
@@ -535,7 +582,8 @@ def navigate_press_until_match(
 def load_and_execute_navigation(
     nav_config: NavigationConfig,
     template_base_dir: str,
-    cancel_event: Optional[threading.Event] = None
+    cancel_event: Optional[threading.Event] = None,
+    context: Optional[dict] = None
 ) -> bool:
     """
     Main entry point for template-based navigation.
@@ -605,16 +653,17 @@ def load_and_execute_navigation(
     logger.debug(f"  Search margin: {nav_config.search_margin}, Method: {nav_config.matching_method}")
 
     success = execute_navigation_sequence(
-        steps=sequence.steps,
-        template_dir=template_dir,
-        threshold=nav_config.template_threshold,
-        max_retries=nav_config.max_retries,
-        retry_delay=nav_config.retry_delay,
-        action_delay=nav_config.action_delay,
-        search_margin=nav_config.search_margin,
-        method=matching_method,
-        cancel_event=cancel_event
-    )
+            steps=sequence.steps,
+            template_dir=template_dir,
+            threshold=nav_config.template_threshold,
+            max_retries=nav_config.max_retries,
+            retry_delay=nav_config.retry_delay,
+            action_delay=nav_config.action_delay,
+            search_margin=nav_config.search_margin,
+            method=matching_method,
+            cancel_event=cancel_event,
+            context=context
+        )
 
     if not success:
         logger.error(f"✗ Navigation failed")

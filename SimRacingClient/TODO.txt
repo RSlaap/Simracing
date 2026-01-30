@@ -12,3 +12,4 @@
 - Change orchestrator to:
     - Receive more information about clients (add IP)
     - Figure out best way to let clients show what they are doing. 
+- Client should send ip on heartbeat. On multiplayer, orchestrator should give the clients more information, like which pcs are also doing the multiplayer and what their info is. 

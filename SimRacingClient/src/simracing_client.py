@@ -40,7 +40,8 @@ SETUP_STATE = {
     "current_game": None,
     "session_id": None,
     "role": None,
-    "player_count": None
+    "player_count": None,
+    "host_ip": None
 }
 
 def _send_heartbeat():
@@ -122,7 +123,6 @@ def register_orchestrator():
         "heartbeat_interval": HEARTBEAT_INTERVAL
     })
 
-
 @app.route('/api/configure', methods=['POST'])
 def configure():
     """Receive configuration from orchestrator"""
@@ -130,15 +130,17 @@ def configure():
     game = data.get('game')
     session_id = data.get('session_id')
     role = data.get('role')
-    player_count = data.get('player_count')  # Optional for backward compatibility
+    player_count = data.get('player_count')
+    host_ip = data.get('host_ip')  # Receive host IP
 
     SETUP_STATE["current_game"] = game
     SETUP_STATE["session_id"] = session_id
     SETUP_STATE["role"] = role
     SETUP_STATE["player_count"] = player_count
+    SETUP_STATE["host_ip"] = host_ip  # Store host IP
     SETUP_STATE["status"] = "configured"
 
-    logger.info(f"Configured: Game={game}, Session={session_id}, Role={role}, PlayerCount={player_count}")
+    logger.info(f"Configured: Game={game}, Session={session_id}, Role={role}, PlayerCount={player_count}, HostIP={host_ip}")
 
     return jsonify({
         "status": "success",
@@ -146,14 +148,15 @@ def configure():
         "state": SETUP_STATE
     })
 
-def _launch_game_async(game: str, role: Role, player_count: Optional[int] = None):
+
+def _launch_game_async(game: str, role: Role, player_count: Optional[int] = None, host_ip: Optional[str] = None):
     """Background thread function to launch game"""
     try:
         # Clear any previous cancellation signal before starting
         cancel_navigation.clear()
 
-        logger.info(f"Background thread: launching {game} as {role} with player_count={player_count}")
-        success = launch(game, role, cancel_event=cancel_navigation, player_count=player_count)
+        logger.info(f"Background thread: launching {game} as {role} with player_count={player_count}, host_ip={host_ip}")
+        success = launch(game, role, cancel_event=cancel_navigation, player_count=player_count, host_ip=host_ip)
 
         if success:
             SETUP_STATE["status"] = "running"
@@ -192,7 +195,7 @@ def start_game():
 
     game = SETUP_STATE["current_game"]
     role = SETUP_STATE["role"]
-
+    host_ip = SETUP_STATE["host_ip"]
     logger.info(f"Starting {game} with role {role}")
 
     # Update state to starting immediately
@@ -202,7 +205,7 @@ def start_game():
     player_count = SETUP_STATE.get("player_count")
     launch_thread = threading.Thread(
         target=_launch_game_async,
-        args=(game, role, player_count),
+        args=(game, role, player_count, host_ip),
         daemon=True
     )
     launch_thread.start()
