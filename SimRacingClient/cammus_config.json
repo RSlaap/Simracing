@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "executable_path": "",
+  "process_name": "",
+  "window_title": "",
+  "template_dir": "CAMMUS",
+  "template_threshold": 0.85,
+  "startup_delay": 5.0,
+  "max_retries": 15,
+  "retry_delay": 1.0,
+  "click_delay": 0.5,
+  "click_steps_file": "click_steps.json"
+}
