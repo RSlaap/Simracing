@@ -462,6 +462,11 @@ def start_multiplayer():
     results = []
     configured_slots = []
 
+    # Get host IP from the first slot (slot 0 will be host)
+    host_slot = SLOTS[slot_numbers[0]]
+    host_ip = host_slot.setup.address if host_slot.setup else None
+    logger.info(f"Host IP for this session: {host_ip}")
+
     # Phase 1: Configure all slots
     logger.info(f"Phase 1: Configuring {len(slot_numbers)} slots for {game} multiplayer")
     for i, slot_num in enumerate(slot_numbers):
@@ -478,7 +483,8 @@ def start_multiplayer():
                     "game": game,
                     "session_id": session_id,
                     "role": role,
-                    "player_count": len(slot_numbers)
+                    "player_count": len(slot_numbers),
+                    "host_ip": host_ip
                 },
                 timeout=5
             )
