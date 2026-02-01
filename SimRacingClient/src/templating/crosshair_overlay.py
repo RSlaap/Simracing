@@ -49,7 +49,7 @@ class CrosshairOverlay:
                                                   fill=self.color, width=self.thickness)
             
             self.root.after(10, self.update_position)
-        except:
+        except Exception:
             pass
     
     def stop(self):

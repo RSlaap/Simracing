@@ -1,9 +1,22 @@
+"""
+Windows window focus management utilities.
+
+This module provides functions to find and focus windows by title.
+Windows-only: uses win32gui and ctypes for window manipulation.
+"""
+
+import sys
+import time
+
+if sys.platform != 'win32':
+    raise ImportError("focus_window module is only available on Windows")
+
+import ctypes
 import win32gui
 import win32con
 import win32process
 import pywintypes
-import ctypes
-import time
+
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
@@ -14,14 +27,23 @@ KEYEVENTF_KEYUP = 0x0002
 VK_MENU = 0x12  # Alt key
 
 def bring_window_to_focus(window_title_substring: str) -> bool:
-    def callback(hwnd, windows):
+    """
+    Find a window by title substring and bring it to focus.
+
+    Args:
+        window_title_substring: Partial window title to search for (case-insensitive).
+
+    Returns:
+        True if window was found and focused, False otherwise.
+    """
+    def callback(hwnd: int, windows: list) -> bool:
         if win32gui.IsWindowVisible(hwnd):
             title = win32gui.GetWindowText(hwnd)
             if window_title_substring.lower() in title.lower():
                 windows.append((hwnd, title))
         return True
 
-    windows = []
+    windows: list = []
     win32gui.EnumWindows(callback, windows)
 
     if not windows:
@@ -84,7 +106,18 @@ def bring_window_to_focus(window_title_substring: str) -> bool:
 
 
 def _wait_and_focus_window(window_title: str, max_attempts: int = 10) -> bool:
-    """Wait for window to appear and bring it to focus."""
+    """
+    Wait for a window to appear and bring it to focus.
+
+    Retries every 2 seconds until the window is found or max attempts reached.
+
+    Args:
+        window_title: Partial window title to search for.
+        max_attempts: Maximum number of attempts (default: 10).
+
+    Returns:
+        True if window was found and focused, False if max attempts exceeded.
+    """
     logger.info(f"Waiting for '{window_title}' window to appear...")
 
     for attempt in range(max_attempts):

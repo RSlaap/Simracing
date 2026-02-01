@@ -1,16 +1,35 @@
+"""
+Network utilities for SimRacing client.
+
+Provides functions for IP address detection and mDNS service registration.
+"""
 
 import socket
+from typing import Dict, Any, Tuple
 
 from zeroconf import ServiceInfo, Zeroconf
+
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
 
-def get_local_ip():
+
+def get_local_ip() -> str:
+    """
+    Get the local IP address of this machine.
+
+    Uses UDP socket method (most reliable) with hostname fallback.
+
+    Returns:
+        Local IP address as string.
+
+    Raises:
+        RuntimeError: If unable to determine local IP address.
+    """
     # Primary: UDP socket method - most reliable for finding the "outbound" IP
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('192.168.2.1', 80))  # Doesn't actually send packets
+        s.connect(('8.8.8.8', 80))  # Google DNS - doesn't actually send packets
         ip = s.getsockname()[0]
         s.close()
         return ip
@@ -31,8 +50,21 @@ def get_local_ip():
         "Please check network connection and configuration."
     )
 
-def register_mdns_service(config, port=5000):
-    """Register this setup as discoverable via mDNS"""
+
+def register_mdns_service(
+    config: Dict[str, Any],
+    port: int = 5000
+) -> Tuple[Zeroconf, ServiceInfo]:
+    """
+    Register this setup as discoverable via mDNS.
+
+    Args:
+        config: Configuration dict containing 'name' and 'id' keys.
+        port: Port number for the service (default: 5000).
+
+    Returns:
+        Tuple of (Zeroconf instance, ServiceInfo instance).
+    """
     local_ip = get_local_ip()
 
     service_type = "_simracing._tcp.local."

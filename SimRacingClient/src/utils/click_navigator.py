@@ -8,12 +8,15 @@ Unlike screen_navigator.py which checks fixed regions and presses keys, this mod
 - Useful for configuring external software before game launch
 """
 
+import json
+import time
+
 import cv2
 import numpy as np
 import pyautogui
-import time
 from typing import List, Optional, Tuple
 from pathlib import Path
+
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
@@ -192,8 +195,6 @@ def execute_click_navigation_from_json(
     Returns:
         True if all steps completed successfully, False otherwise
     """
-    import json
-
     json_file = Path(json_path)
     if not json_file.exists():
         logger.error(f"Navigation file not found: {json_path}")

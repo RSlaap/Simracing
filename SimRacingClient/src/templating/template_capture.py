@@ -82,7 +82,7 @@ class TemplateCapturer:
             
             if self.crosshair_root:
                 self.crosshair_root.after(10, self.update_crosshair)
-        except:
+        except Exception:
             pass
     
     def load_templates_data(self):
@@ -162,7 +162,7 @@ class TemplateCapturer:
                 if self.crosshair_root:
                     try:
                         self.crosshair_root.quit()
-                    except:
+                    except Exception:
                         pass
                 return False
         except AttributeError:
