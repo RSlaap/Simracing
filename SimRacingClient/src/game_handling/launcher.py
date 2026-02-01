@@ -11,7 +11,6 @@ This module provides the launch() function that:
 import sys
 from pathlib import Path
 src_dir = Path(__file__).parent.parent
-print(src_dir)
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 

@@ -166,8 +166,7 @@ def execute_key_presses(
         time.sleep(action_delay)
         for i, press in enumerate(key_press):
             key = key_mapping.get(press, press)
-            print(key, type(key))
-            logger.info(f'Pressed {key}')
+            logger.debug(f'Pressed {key}')
             pydirectinput.press(key)
             # Add delay between presses (but not after the last one)
             if i < len(key_press) - 1:
@@ -437,7 +436,6 @@ def attempt_step_options(
             # Resolve key presses with context (for variable substitution)
             resolved_key_press = resolve_key_presses(option.key_press, context)
             resolved_press_until_match = resolve_key_presses(option.press_until_match, context)
-            logger.info(f"********** Pressing {resolved_key_press} with context {context}")
             # BRANCH 1: Press-until-match pattern
             if resolved_press_until_match is not None:
                 matched = navigate_press_until_match(

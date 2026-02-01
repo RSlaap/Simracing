@@ -85,8 +85,6 @@ def bring_window_to_focus(window_title_substring: str) -> bool:
 
 def _wait_and_focus_window(window_title: str, max_attempts: int = 10) -> bool:
     """Wait for window to appear and bring it to focus."""
-    from utils.focus_window import bring_window_to_focus
-
     logger.info(f"Waiting for '{window_title}' window to appear...")
 
     for attempt in range(max_attempts):

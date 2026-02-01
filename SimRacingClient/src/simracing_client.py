@@ -11,40 +11,13 @@ import threading
 import time
 import requests
 from flask import Flask, request, jsonify
-
-
-def disable_quickedit():
-    """Disable QuickEdit mode on Windows to prevent console click from pausing the process."""
-    if sys.platform != 'win32':
-        return
-
-    try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-
-        # Get handle to stdin
-        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
-
-        # Get current console mode
-        mode = ctypes.c_ulong()
-        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-
-        # Disable QuickEdit (0x0040) and Insert Mode (0x0020)
-        ENABLE_QUICK_EDIT_MODE = 0x0040
-        ENABLE_INSERT_MODE = 0x0020
-        mode.value &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_INSERT_MODE)
-
-        # Set new console mode
-        kernel32.SetConsoleMode(handle, mode)
-    except Exception:
-        pass  # Silently fail on non-Windows or if it doesn't work
-
-
 from typing import Optional
 from utils.networking import get_local_ip, register_mdns_service
 from utils.process import terminate_process, is_process_running
 from utils.monitoring import get_logger, setup_logging
 from utils.data_model import MachineConfig
+from utils.setup_state import SetupState
+from utils.input_blocker import disable_quickedit
 from utils.cammus_helper import execute_cammus_configuration
 from game_handling import launch, GAME_REGISTRY, Role
 
@@ -65,14 +38,9 @@ MACHINE_CONFIG: Optional[MachineConfig] = None
 # Cancellation event for stopping running navigation sequences
 cancel_navigation = threading.Event()
 
-SETUP_STATE = {
-    "status": "idle",
-    "current_game": None,
-    "session_id": None,
-    "role": None,
-    "player_count": None,
-    "host_ip": None
-}
+# Thread-safe state management
+setup_state = SetupState()
+
 
 def _send_heartbeat():
     """Send periodic status updates to the orchestrator"""
@@ -80,37 +48,38 @@ def _send_heartbeat():
     while not stop_heartbeat.is_set():
         if ORCHESTRATOR_URL and MACHINE_CONFIG:
             try:
-                # Check if configured game is actually running
+                # Get thread-safe snapshot of current state
+                state = setup_state.snapshot()
                 actual_game = None
-                if SETUP_STATE["current_game"]:
+
+                if state["current_game"]:
                     try:
-                        config = GAME_REGISTRY.get(SETUP_STATE["current_game"])
+                        config = GAME_REGISTRY.get(state["current_game"])
                         if is_process_running(config.process_name):
-                            actual_game = SETUP_STATE["current_game"]
+                            actual_game = state["current_game"]
                             # If game is running but state is not "running", update it
-                            if SETUP_STATE["status"] != "running":
-                                logger.info(f"Game {actual_game} is running but state was {SETUP_STATE['status']}, updating to running")
-                                SETUP_STATE["status"] = "running"
+                            if state["status"] != "running":
+                                logger.info(f"Game {actual_game} is running but state was {state['status']}, updating to running")
+                                setup_state.set_status("running")
                         else:
                             # Game process is not running but we have it configured
-                            if SETUP_STATE["status"] == "running":
-                                logger.warning(f"Game {SETUP_STATE['current_game']} process not found, resetting state to idle")
-                                SETUP_STATE["status"] = "idle"
-                                SETUP_STATE["current_game"] = None
-                                SETUP_STATE["session_id"] = None
-                                SETUP_STATE["role"] = None
-                                SETUP_STATE["player_count"] = None
+                            if state["status"] == "running":
+                                logger.warning(f"Game {state['current_game']} process not found, resetting state to idle")
+                                setup_state.reset()
                     except ValueError as e:
                         # Game not in registry
-                        logger.error(f"Game {SETUP_STATE['current_game']} not found in registry: {e}")
+                        logger.error(f"Game {state['current_game']} not found in registry: {e}")
+
+                # Get fresh snapshot for payload after potential updates
+                state = setup_state.snapshot()
                 payload = {
                     "name": MACHINE_CONFIG.name,
                     "id": MACHINE_CONFIG.id,
                     "ip": MACHINE_CONFIG.ip,
                     "port": MACHINE_CONFIG.port,
-                    "status": SETUP_STATE["status"],
+                    "status": state["status"],
                     "current_game": actual_game,
-                    "session_id": SETUP_STATE["session_id"],
+                    "session_id": state["session_id"],
                     "timestamp": time.time()
                 }
                 logger.info(
@@ -166,21 +135,20 @@ def configure():
     session_id = data.get('session_id')
     role = data.get('role')
     player_count = data.get('player_count')
-    host_ip = data.get('host_ip')  # Receive host IP
+    host_ip = data.get('host_ip')
 
-    SETUP_STATE["current_game"] = game
-    SETUP_STATE["session_id"] = session_id
-    SETUP_STATE["role"] = role
-    SETUP_STATE["player_count"] = player_count
-    SETUP_STATE["host_ip"] = host_ip  # Store host IP
-    SETUP_STATE["status"] = "configured"
-
-    logger.info(f"Configured: Game={game}, Session={session_id}, Role={role}, PlayerCount={player_count}, HostIP={host_ip}")
+    setup_state.configure(
+        game=game,
+        session_id=session_id,
+        role=role,
+        player_count=player_count,
+        host_ip=host_ip
+    )
 
     return jsonify({
         "status": "success",
         "message": f"Setup configured for {game} as {role}",
-        "state": SETUP_STATE
+        "state": setup_state.snapshot()
     })
 
 
@@ -194,25 +162,15 @@ def _launch_game_async(game: str, role: Role, player_count: Optional[int] = None
         success = launch(game, role, cancel_event=cancel_navigation, player_count=player_count, host_ip=host_ip)
 
         if success:
-            SETUP_STATE["status"] = "running"
+            setup_state.set_status("running")
             logger.info(f"Background thread: {game} started successfully")
         else:
             logger.error(f"Background thread: Failed to start {game}")
-            # Reset state on failure
-            SETUP_STATE["status"] = "idle"
-            SETUP_STATE["current_game"] = None
-            SETUP_STATE["session_id"] = None
-            SETUP_STATE["role"] = None
-            SETUP_STATE["player_count"] = None
+            setup_state.reset()
 
     except Exception as e:
         logger.error(f"Background thread: Error starting game: {e}")
-        # Reset state on error
-        SETUP_STATE["status"] = "idle"
-        SETUP_STATE["current_game"] = None
-        SETUP_STATE["session_id"] = None
-        SETUP_STATE["role"] = None
-        SETUP_STATE["player_count"] = None
+        setup_state.reset()
 
 
 @app.route('/api/start', methods=['POST'])
@@ -221,23 +179,24 @@ def start_game():
     logger.info("Received start game request.")
 
     # Validate that setup is configured
-    if SETUP_STATE["status"] != "configured":
-        logger.error(f"Cannot start game: setup is not configured (status: {SETUP_STATE['status']})")
+    if not setup_state.is_configured():
+        logger.error(f"Cannot start game: setup is not configured (status: {setup_state.status})")
         return jsonify({
             "status": "error",
             "message": "Setup must be configured before starting game"
         }), 400
 
-    game = SETUP_STATE["current_game"]
-    role = SETUP_STATE["role"]
-    host_ip = SETUP_STATE["host_ip"]
+    # Get values from state
+    game = setup_state.current_game
+    role = setup_state.role
+    host_ip = setup_state.host_ip
+    player_count = setup_state.player_count
     logger.info(f"Starting {game} with role {role}")
 
     # Update state to starting immediately
-    SETUP_STATE["status"] = "starting"
+    setup_state.set_status("starting")
 
     # Launch game in background thread to avoid blocking the response
-    player_count = SETUP_STATE.get("player_count")
     launch_thread = threading.Thread(
         target=_launch_game_async,
         args=(game, role, player_count, host_ip),
@@ -260,8 +219,9 @@ def stop_game():
     cancel_navigation.set()
     logger.info("Cancellation signal sent to navigation sequence")
 
-    game = SETUP_STATE["current_game"]
-    current_status = SETUP_STATE["status"]
+    # Get current game info
+    game = setup_state.current_game
+    current_status = setup_state.status
 
     if not game:
         logger.warning("No game is currently configured")
@@ -279,11 +239,7 @@ def stop_game():
 
         # Always reset state when stop is requested
         # Even if process wasn't found (e.g., during "starting" phase)
-        SETUP_STATE["status"] = "idle"
-        SETUP_STATE["current_game"] = None
-        SETUP_STATE["session_id"] = None
-        SETUP_STATE["role"] = None
-        SETUP_STATE["player_count"] = None
+        setup_state.reset()
 
         if success:
             logger.info(f"{game} closed successfully, state reset to idle")
@@ -302,11 +258,7 @@ def stop_game():
     except Exception as e:
         logger.error(f"Error stopping game: {e}")
         # Still reset state on error
-        SETUP_STATE["status"] = "idle"
-        SETUP_STATE["current_game"] = None
-        SETUP_STATE["session_id"] = None
-        SETUP_STATE["role"] = None
-        SETUP_STATE["player_count"] = None
+        setup_state.reset()
         return jsonify({
             "status": "error",
             "message": f"Error stopping game: {str(e)}"

@@ -1,3 +1,11 @@
+"""
+Windows input blocking and console utilities.
+
+Provides functions to block keyboard/mouse input during automated
+navigation sequences, and console configuration utilities.
+"""
+
+import sys
 import ctypes
 from ctypes import POINTER, c_int, c_uint, c_long, windll, c_void_p
 from ctypes import wintypes
@@ -6,6 +14,40 @@ import threading
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
+
+
+def disable_quickedit():
+    """
+    Disable QuickEdit mode on Windows console.
+
+    QuickEdit mode causes the process to pause when the user clicks
+    on the console window. This is problematic for long-running services
+    that should not be interrupted by accidental clicks.
+
+    This function silently does nothing on non-Windows platforms.
+    """
+    if sys.platform != 'win32':
+        return
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+
+        # Get handle to stdin
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+
+        # Get current console mode
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+
+        # Disable QuickEdit (0x0040) and Insert Mode (0x0020)
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        ENABLE_INSERT_MODE = 0x0020
+        mode.value &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_INSERT_MODE)
+
+        # Set new console mode
+        kernel32.SetConsoleMode(handle, mode)
+    except Exception:
+        pass  # Silently fail if it doesn't work
 
 user32 = windll.user32
 kernel32 = windll.kernel32
