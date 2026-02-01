@@ -570,6 +570,67 @@ def start_multiplayer():
     })
 
 
+@app.route('/api/configure_motion', methods=['POST'])
+def configure_motion():
+    """Configure motion/wheel software on all online setups"""
+    results = []
+
+    for slot_num, slot in SLOTS.items():
+        if not slot.is_online():
+            continue
+
+        setup_id = slot.get_setup_id()
+        setup_name = slot.setup.heartbeat.name if slot.setup and slot.setup.heartbeat else f"Slot {slot_num}"
+
+        try:
+            logger.info(f"Configuring motion on {setup_name} ({setup_id})")
+
+            response = requests.post(
+                f"http://{setup_id}/api/configure_cammus",
+                timeout=60  # Longer timeout as this can take a while
+            )
+
+            if response.ok:
+                logger.info(f"✓ Motion configured on {setup_name}")
+                results.append({
+                    "slot": slot_num,
+                    "name": setup_name,
+                    "status": "success"
+                })
+            else:
+                logger.error(f"Failed to configure motion on {setup_name}: {response.text}")
+                results.append({
+                    "slot": slot_num,
+                    "name": setup_name,
+                    "status": "failed",
+                    "error": response.json().get('message', response.text)
+                })
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error configuring motion on {setup_name}: {e}")
+            results.append({
+                "slot": slot_num,
+                "name": setup_name,
+                "status": "error",
+                "error": str(e)
+            })
+
+    success_count = sum(1 for r in results if r['status'] == 'success')
+    total_count = len(results)
+
+    if total_count == 0:
+        return jsonify({
+            "status": "error",
+            "message": "No online setups found"
+        }), 400
+
+    return jsonify({
+        "status": "success" if success_count == total_count else "partial",
+        "message": f"Configured {success_count}/{total_count} setups",
+        "results": results
+    })
+
+
 @app.route('/api/register_setup', methods=['POST'])
 def register_setup():
     """Manually register a specific setup for heartbeats"""
