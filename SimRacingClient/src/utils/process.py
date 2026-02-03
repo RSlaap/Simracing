@@ -3,15 +3,48 @@ Process management utilities for launching and terminating game processes.
 
 This module provides:
 - launch_process(): Start a game executable as a subprocess
+- launch_process_elevated(): Start a game with admin privileges (UAC prompt)
 - terminate_process(): Find and kill processes by name
 """
 
 import subprocess
+import sys
 import psutil
 from pathlib import Path
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
+
+# Windows-specific imports for elevated launch
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes import wintypes
+
+    # ShellExecuteEx structures and constants
+    SEE_MASK_NOCLOSEPROCESS = 0x00000040
+    SW_SHOWNORMAL = 1
+
+    class SHELLEXECUTEINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("fMask", wintypes.ULONG),
+            ("hwnd", wintypes.HWND),
+            ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR),
+            ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR),
+            ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE),
+            ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wintypes.LPCWSTR),
+            ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD),
+            ("hIconOrMonitor", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    ShellExecuteEx = ctypes.windll.shell32.ShellExecuteExW
+    ShellExecuteEx.restype = wintypes.BOOL
 
 
 def launch_process(executable_path: Path) -> subprocess.Popen:
@@ -48,6 +81,94 @@ def launch_process(executable_path: Path) -> subprocess.Popen:
         raise PermissionError(f"No permission to execute: {executable_path}")
     except Exception as e:
         raise RuntimeError(f"Failed to launch: {str(e)}")
+
+
+def launch_process_elevated(executable_path: Path, wait: bool = False) -> bool:
+    """
+    Launch a process with elevated (administrator) privileges using ShellExecuteEx.
+
+    This function triggers a UAC prompt if the current process is not already elevated.
+    Use this for applications that require administrator privileges to run.
+
+    Args:
+        executable_path: Absolute path to the executable
+        wait: If True, wait for the process to exit before returning
+
+    Returns:
+        True if the process was launched successfully, False otherwise
+
+    Raises:
+        FileNotFoundError: If executable doesn't exist
+        RuntimeError: On non-Windows platforms or if launch fails
+
+    Note:
+        - On Windows, this will show a UAC prompt if the script is not elevated
+        - If the user denies the UAC prompt, the function returns False
+        - The launched process runs in a separate context, so we cannot get its PID
+    """
+    if sys.platform != 'win32':
+        raise RuntimeError("Elevated launch is only supported on Windows")
+
+    exe_path = Path(executable_path)
+
+    if not exe_path.exists():
+        raise FileNotFoundError(f"Executable not found: {executable_path}")
+
+    if not exe_path.is_file():
+        raise ValueError(f"Path is not a file: {executable_path}")
+
+    logger.info(f"Launching with elevation: {exe_path.name}")
+    logger.info(f"Path: {exe_path.absolute()}")
+
+    try:
+        sei = SHELLEXECUTEINFO()
+        sei.cbSize = ctypes.sizeof(sei)
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS
+        sei.hwnd = None
+        sei.lpVerb = "runas"  # Request elevation
+        sei.lpFile = str(exe_path)
+        sei.lpParameters = None
+        sei.lpDirectory = str(exe_path.parent)
+        sei.nShow = SW_SHOWNORMAL
+        sei.hInstApp = None
+        sei.hProcess = None
+
+        if not ShellExecuteEx(ctypes.byref(sei)):
+            error_code = ctypes.get_last_error()
+            if error_code == 1223:  # ERROR_CANCELLED - User denied UAC
+                logger.warning("User cancelled UAC elevation prompt")
+                return False
+            logger.error(f"ShellExecuteEx failed with error code: {error_code}")
+            return False
+
+        logger.info(f"Process launched with elevation")
+
+        if wait and sei.hProcess:
+            ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, -1)  # INFINITE
+            ctypes.windll.kernel32.CloseHandle(sei.hProcess)
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to launch with elevation: {e}")
+        raise RuntimeError(f"Failed to launch with elevation: {str(e)}")
+
+
+def is_running_elevated() -> bool:
+    """
+    Check if the current process is running with administrator privileges.
+
+    Returns:
+        True if running as admin/elevated, False otherwise.
+        Always returns False on non-Windows platforms.
+    """
+    if sys.platform != 'win32':
+        return False
+
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
 
 
 def is_process_running(process_name: str) -> bool:

@@ -6,9 +6,12 @@ Unlike screen_navigator.py which checks fixed regions and presses keys, this mod
 - Searches the entire screen for templates
 - Clicks on them when found
 - Useful for configuring external software before game launch
+
+Note: Uses low-level ctypes SendInput for clicking to work with elevated windows.
 """
 
 import json
+import sys
 import time
 
 import cv2
@@ -20,6 +23,117 @@ from pathlib import Path
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
+
+# Windows-specific low-level mouse input using ctypes
+# This is more reliable than pyautogui for elevated windows
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes import wintypes
+
+    # Input type constants
+    INPUT_MOUSE = 0
+
+    # Mouse event flags
+    MOUSEEVENTF_MOVE = 0x0001
+    MOUSEEVENTF_LEFTDOWN = 0x0002
+    MOUSEEVENTF_LEFTUP = 0x0004
+    MOUSEEVENTF_ABSOLUTE = 0x8000
+
+    # Structure for mouse input
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", wintypes.LONG),
+            ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
+        ]
+
+    class INPUT(ctypes.Structure):
+        class _INPUT_UNION(ctypes.Union):
+            _fields_ = [("mi", MOUSEINPUT)]
+
+        _anonymous_ = ("_input",)
+        _fields_ = [
+            ("type", wintypes.DWORD),
+            ("_input", _INPUT_UNION),
+        ]
+
+    SendInput = ctypes.windll.user32.SendInput
+    SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
+    SendInput.restype = wintypes.UINT
+
+    def _low_level_click(x: int, y: int, double_click: bool = False):
+        """
+        Perform a low-level mouse click using ctypes SendInput.
+
+        This method is more reliable than pyautogui for clicking on
+        elevated (admin) windows when the script is also elevated.
+
+        Args:
+            x: Screen X coordinate (absolute pixels)
+            y: Screen Y coordinate (absolute pixels)
+            double_click: If True, perform a double-click
+        """
+        # Get screen dimensions for coordinate normalization
+        screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+
+        # Convert to normalized coordinates (0-65535 range)
+        norm_x = int(x * 65535 / screen_width)
+        norm_y = int(y * 65535 / screen_height)
+
+        # Move mouse to position
+        move_input = INPUT()
+        move_input.type = INPUT_MOUSE
+        move_input.mi.dx = norm_x
+        move_input.mi.dy = norm_y
+        move_input.mi.mouseData = 0
+        move_input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
+        move_input.mi.time = 0
+        move_input.mi.dwExtraInfo = None
+
+        SendInput(1, ctypes.byref(move_input), ctypes.sizeof(INPUT))
+        time.sleep(0.05)  # Small delay after move
+
+        # Perform click(s)
+        clicks = 2 if double_click else 1
+        for _ in range(clicks):
+            # Mouse down
+            down_input = INPUT()
+            down_input.type = INPUT_MOUSE
+            down_input.mi.dx = norm_x
+            down_input.mi.dy = norm_y
+            down_input.mi.mouseData = 0
+            down_input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE
+            down_input.mi.time = 0
+            down_input.mi.dwExtraInfo = None
+
+            SendInput(1, ctypes.byref(down_input), ctypes.sizeof(INPUT))
+            time.sleep(0.02)
+
+            # Mouse up
+            up_input = INPUT()
+            up_input.type = INPUT_MOUSE
+            up_input.mi.dx = norm_x
+            up_input.mi.dy = norm_y
+            up_input.mi.mouseData = 0
+            up_input.mi.dwFlags = MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE
+            up_input.mi.time = 0
+            up_input.mi.dwExtraInfo = None
+
+            SendInput(1, ctypes.byref(up_input), ctypes.sizeof(INPUT))
+
+            if double_click and _ == 0:
+                time.sleep(0.05)  # Small delay between double-click
+else:
+    def _low_level_click(x: int, y: int, double_click: bool = False):
+        """Fallback to pyautogui on non-Windows platforms."""
+        if double_click:
+            pyautogui.doubleClick(x, y)
+        else:
+            pyautogui.click(x, y)
 
 
 def find_template_on_screen(
@@ -82,6 +196,9 @@ def click_template_if_found(
     """
     Find a template on screen and click it if found.
 
+    Uses low-level ctypes SendInput for clicking, which is more reliable
+    for clicking on elevated (admin) windows.
+
     Args:
         template_path: Path to the template image file
         threshold: Minimum match confidence (0.0-1.0)
@@ -95,12 +212,11 @@ def click_template_if_found(
 
     if result:
         x, y, confidence = result
-        if double_click:
-            pyautogui.doubleClick(x, y)
-            logger.info(f"Double-clicked at ({x}, {y})")
-        else:
-            pyautogui.click(x, y)
-            logger.info(f"Clicked at ({x}, {y})")
+        click_type = "Double-clicked" if double_click else "Clicked"
+
+        # Use low-level click for better compatibility with elevated windows
+        _low_level_click(x, y, double_click)
+        logger.info(f"{click_type} at ({x}, {y})")
 
         time.sleep(click_delay)
         return True

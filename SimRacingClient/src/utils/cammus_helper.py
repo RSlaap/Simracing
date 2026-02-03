@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from utils.process import is_process_running, launch_process
+from utils.process import is_process_running, launch_process_elevated, is_running_elevated
 from utils.focus_window import _wait_and_focus_window
 from utils.click_navigator import click_template_if_found
 from utils.monitoring import get_logger
@@ -44,9 +44,21 @@ def execute_cammus_configuration() -> tuple[bool, str]:
     Launches the Cammus software (if not running), focuses its window,
     and executes a click sequence based on template matching.
 
+    Note: This function works best when the script is running with administrator
+    privileges. If CAMMUS requires elevation, the script must also be elevated
+    to send mouse clicks to it (due to Windows UIPI restrictions).
+
     Returns:
         Tuple of (success, message)
     """
+    # Check if running elevated - warn if not
+    if not is_running_elevated():
+        logger.warning(
+            "Script is NOT running with administrator privileges. "
+            "Mouse clicks may not work on elevated windows (CAMMUS). "
+            "Consider running the launcher as Administrator."
+        )
+
     config = load_cammus_config()
     if not config:
         return False, "Failed to load cammus_config.json"
@@ -84,9 +96,11 @@ def execute_cammus_configuration() -> tuple[bool, str]:
 
     if executable_path and process_name:
         if not is_process_running(process_name):
-            logger.info(f"Launching Cammus software: {executable_path}")
+            logger.info(f"Launching Cammus software with elevation: {executable_path}")
             try:
-                launch_process(Path(executable_path))
+                success = launch_process_elevated(Path(executable_path))
+                if not success:
+                    return False, "Failed to launch Cammus software (user may have denied UAC prompt)"
                 # Wait for software to load past splash screen
                 logger.info(f"Waiting {startup_delay}s for software to load...")
                 time.sleep(startup_delay)
