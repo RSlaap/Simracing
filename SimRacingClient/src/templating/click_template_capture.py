@@ -1,29 +1,34 @@
 """
 Click-based template capture tool for UI automation.
 
-This tool captures full-screen templates for click-based navigation (e.g., CAMMUS software).
-Unlike template_capture.py which captures regions for keyboard navigation, this tool:
-- Captures the area around where you click (full-screen search compatible)
-- Outputs in ClickStep format for use with click_navigator.py
-- Supports double-click marking
+This tool captures templates for click-based navigation (e.g., CAMMUS software).
+It captures the area around the current mouse position when you press a hotkey,
+allowing you to click normally in the target application without interference.
 
 Usage:
     python click_template_capture.py [config_name]
 
-    config_name: Name for this configuration (default: "cammus")
-                 Templates saved to: templates/{config_name}/
-                 Config saved to: {config_name}_config.json
+    config_name: Name prefix for saved templates (default: "cammus")
+                 Templates saved to: unclassified_templates/
 
 Controls:
-    S - Start capture mode (click to capture template at that location)
-    D - Toggle double-click for next capture
+    C - Capture template at current mouse position (single-click action)
+    V - Capture template at current mouse position (double-click action)
     Q - Quit and save
 
-Output format (click_steps.json):
-    [
-        {"template": "step_001.png", "double_click": false},
-        {"template": "step_002.png", "double_click": true}
-    ]
+Workflow:
+    1. Open the target application (e.g., CAMMUS)
+    2. Run this tool
+    3. Position mouse over a button you want to capture
+    4. Press 'C' (single-click) or 'V' (double-click) to capture
+    5. Click the button normally to navigate to the next screen
+    6. Repeat steps 3-5 for each button
+    7. Press 'Q' to quit and save
+
+Output:
+    - Templates saved as PNG files in unclassified_templates/
+    - click_steps.json with the capture sequence
+    - User should manually move files to templates/CAMMUS/ and configure cammus_config.json
 """
 
 import cv2
@@ -41,22 +46,18 @@ from datetime import datetime
 class ClickTemplateCapturer:
     """Captures templates for click-based UI automation."""
 
-    # Size of the region to capture around the click point
-    CAPTURE_SIZE = 80  # pixels on each side of click point (160x160 total)
+    # Size of the region to capture around the mouse position
+    CAPTURE_SIZE = 80  # pixels on each side of mouse (160x160 total)
 
     def __init__(self, config_name: str = "cammus"):
         self.config_name = config_name
-        self.capturing = False
-        self.double_click_next = False
         self.running = True
-        self.click_count = 0
+        self.capture_count = 0
         self.click_steps = []
 
-        # Setup directories
+        # Setup directories - save to unclassified_templates
         self.script_dir = Path(__file__).parent
-        self.project_root = self.script_dir.parent.parent
-        self.templates_dir = self.project_root / "templates" / config_name.upper()
-        self.config_path = self.project_root / f"{config_name}_config.json"
+        self.templates_dir = self.script_dir / "unclassified_templates"
 
         # Create templates directory
         self.templates_dir.mkdir(parents=True, exist_ok=True)
@@ -102,11 +103,8 @@ class ClickTemplateCapturer:
         try:
             x, y = pyautogui.position()
 
-            # Color based on mode
-            if self.capturing:
-                color = 'red' if self.double_click_next else 'lime'
-            else:
-                color = 'gray'
+            # Always show lime color - crosshair is always ready
+            color = 'lime'
 
             if len(self.crosshair_windows) >= 2:
                 # Horizontal line
@@ -133,17 +131,18 @@ class ClickTemplateCapturer:
         except Exception:
             pass
 
-    def capture_at_click(self, x: int, y: int) -> str:
+    def capture_at_position(self, double_click: bool = False) -> str:
         """
-        Capture a template region centered on the click position.
+        Capture a template region centered on the current mouse position.
 
         Args:
-            x: Click X coordinate (absolute pixels)
-            y: Click Y coordinate (absolute pixels)
+            double_click: Whether this capture is for a double-click action
 
         Returns:
             Filename of saved template
         """
+        x, y = pyautogui.position()
+
         # Calculate capture region
         half_size = self.CAPTURE_SIZE
         screen_w, screen_h = pyautogui.size()
@@ -155,10 +154,6 @@ class ClickTemplateCapturer:
 
         width = right - left
         height = bottom - top
-
-        # Small delay to let any UI changes settle
-        import time
-        time.sleep(0.05)
 
         # Capture screenshot
         sct = mss()
@@ -172,30 +167,38 @@ class ClickTemplateCapturer:
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-        # Save template
-        self.click_count += 1
-        filename = f"step_{self.click_count:03d}.png"
+        # Save template with timestamp for uniqueness
+        self.capture_count += 1
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{self.config_name}_step_{self.capture_count:03d}_{timestamp}.png"
         template_path = self.templates_dir / filename
         cv2.imwrite(str(template_path), img)
+
+        # Record step
+        step = {
+            "template": filename,
+            "double_click": double_click
+        }
+        self.click_steps.append(step)
+
+        click_type = "double-click" if double_click else "single-click"
+        print(f"  Step {len(self.click_steps)}: Captured {filename} ({click_type}) at ({x}, {y})")
+        print(f"  Now click the button in CAMMUS to continue, then position for next capture")
 
         return filename
 
     def on_press(self, key):
         """Handle keyboard events."""
         try:
-            if key.char == 's':
-                if not self.capturing:
-                    self.capturing = True
-                    mode = "DOUBLE-CLICK" if self.double_click_next else "SINGLE-CLICK"
-                    print(f"\n[CAPTURE MODE: {mode}] Click on the UI element to capture...")
-                else:
-                    self.capturing = False
-                    print("\n[STANDBY] Press 'S' to capture, 'D' to toggle double-click, 'Q' to quit")
+            if key.char == 'c':
+                # Capture for single-click action
+                print(f"\n[CAPTURING SINGLE-CLICK TEMPLATE]")
+                self.capture_at_position(double_click=False)
 
-            elif key.char == 'd':
-                self.double_click_next = not self.double_click_next
-                mode = "DOUBLE-CLICK" if self.double_click_next else "SINGLE-CLICK"
-                print(f"\n[{mode} MODE] Next capture will be marked as {mode.lower()}")
+            elif key.char == 'v':
+                # Capture for double-click action
+                print(f"\n[CAPTURING DOUBLE-CLICK TEMPLATE]")
+                self.capture_at_position(double_click=True)
 
             elif key.char == 'q':
                 print("\n\nSaving and exiting...")
@@ -210,95 +213,37 @@ class ClickTemplateCapturer:
         except AttributeError:
             pass
 
-    def on_click(self, x, y, button, pressed):
-        """Handle mouse click events."""
-        if self.capturing and pressed:
-            # Capture template at click location
-            filename = self.capture_at_click(x, y)
-
-            # Record step
-            step = {
-                "template": filename,
-                "double_click": self.double_click_next
-            }
-            self.click_steps.append(step)
-
-            click_type = "double-click" if self.double_click_next else "click"
-            print(f"  Step {len(self.click_steps)}: Captured {filename} ({click_type}) at ({x}, {y})")
-
-            # Reset double-click flag after capture
-            self.double_click_next = False
-
-            # Stay in capture mode for next click
-            print(f"\n[CAPTURE MODE] Click next element, or press 'S' to pause, 'D' for double-click")
-
-    def save_config(self):
-        """Save click steps to JSON file."""
-        # Save click steps
+    def save_click_steps(self):
+        """Save click steps to JSON file in unclassified_templates."""
         click_steps_path = self.templates_dir / "click_steps.json"
         with open(click_steps_path, 'w') as f:
             json.dump(self.click_steps, f, indent=2)
-
-        # Create/update main config file
-        config = {
-            "enabled": True,
-            "executable_path": "",
-            "process_name": "",
-            "window_title": "",
-            "template_dir": self.config_name.upper(),
-            "template_threshold": 0.85,
-            "startup_delay": 5.0,
-            "max_retries": 10,
-            "retry_delay": 1.0,
-            "click_delay": 0.5,
-            "click_steps_file": "click_steps.json"
-        }
-
-        # Load existing config if present
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, 'r') as f:
-                    existing = json.load(f)
-                    # Preserve user-configured values
-                    for key in ['executable_path', 'process_name', 'window_title',
-                               'startup_delay', 'max_retries', 'retry_delay', 'click_delay']:
-                        if key in existing and existing[key]:
-                            config[key] = existing[key]
-            except Exception:
-                pass
-
-        with open(self.config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-
-        return click_steps_path, self.config_path
+        return click_steps_path
 
     def start(self):
         """Start the template capture tool."""
-        from pynput import mouse
-
         print("=" * 60)
         print("CLICK TEMPLATE CAPTURE TOOL")
         print("=" * 60)
         print(f"\nConfiguration: {self.config_name}")
         print(f"Templates will be saved to: {self.templates_dir}")
-        print(f"Config will be saved to: {self.config_path}")
+        print("\nWORKFLOW:")
+        print("  1. Position mouse over a button in CAMMUS")
+        print("  2. Press 'C' to capture (for single-click buttons)")
+        print("     or 'V' to capture (for double-click buttons)")
+        print("  3. Click the button in CAMMUS to navigate to next screen")
+        print("  4. Repeat for each button")
+        print("  5. Press 'Q' when done")
         print("\nControls:")
-        print("  S - Start/pause capture mode")
-        print("  D - Toggle double-click for next capture")
+        print("  C - Capture template at mouse position (single-click)")
+        print("  V - Capture template at mouse position (double-click)")
         print("  Q - Quit and save")
-        print("\nCrosshair colors:")
-        print("  Gray  = Standby (not capturing)")
-        print("  Green = Capture mode (single-click)")
-        print("  Red   = Capture mode (double-click)")
         print("\n" + "=" * 60)
-        print("\n[STANDBY] Press 'S' to start capturing")
+        print("\n[READY] Position mouse over first button, then press 'C' or 'V'")
 
-        # Start listeners
+        # Start keyboard listener only (no mouse listener - we don't intercept clicks)
         kb_listener = keyboard.Listener(on_press=self.on_press)
-        mouse_listener = mouse.Listener(on_click=self.on_click)
-
         kb_listener.start()
-        mouse_listener.start()
 
         # Run crosshair update loop
         if self.crosshair_root:
@@ -309,18 +254,15 @@ class ClickTemplateCapturer:
         else:
             kb_listener.join()
 
-        mouse_listener.stop()
-
         # Save results
         if self.click_steps:
-            steps_path, config_path = self.save_config()
-            print(f"\nSaved {len(self.click_steps)} step(s):")
-            print(f"  Click steps: {steps_path}")
-            print(f"  Config: {config_path}")
+            steps_path = self.save_click_steps()
+            print(f"\nSaved {len(self.click_steps)} step(s) to: {steps_path}")
             print("\nNext steps:")
-            print(f"  1. Edit {config_path.name} to set executable_path, process_name, window_title")
-            print(f"  2. Adjust startup_delay if needed (time to wait for software to load)")
-            print(f"  3. Call /api/configure_cammus endpoint to test")
+            print(f"  1. Move template images from unclassified_templates/ to templates/CAMMUS/")
+            print(f"  2. Move click_steps.json to templates/CAMMUS/")
+            print(f"  3. Update cammus_config.json with correct paths and settings")
+            print(f"  4. See documentation/CAMMUS_SETUP.md for detailed instructions")
         else:
             print("\nNo templates captured.")
 

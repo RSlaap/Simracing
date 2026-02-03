@@ -10,21 +10,21 @@ echo from the CAMMUS software for automatic configuration.
 echo.
 echo BEFORE YOU START:
 echo  1. Open CAMMUS software
-echo  2. Navigate to the screen with buttons you want to capture
+echo  2. Navigate to the first screen with buttons you want to capture
 echo  3. Make sure CAMMUS window is visible and not minimized
 echo.
-echo INSTRUCTIONS:
-echo  - Press 'S' to start capturing a template
-echo  - Click top-left corner of button
-echo  - Click bottom-right corner of button
-echo  - Repeat for each button you need
-echo  - Press 'Q' to quit when done
+echo WORKFLOW:
+echo  1. Position your mouse over a button in CAMMUS
+echo  2. Press 'C' to capture (single-click) or 'V' (double-click)
+echo  3. Click the button in CAMMUS to navigate to the next screen
+echo  4. Repeat steps 1-3 for each button
+echo  5. Press 'Q' when done
+echo.
+echo NOTE: Your mouse clicks are NOT blocked - you can click
+echo normally in CAMMUS while using this tool.
 echo.
 echo Templates will be saved to:
 echo  src\templating\unclassified_templates\
-echo.
-echo After capturing, move templates to:
-echo  templates\CAMMUS\
 echo.
 pause
 echo.
@@ -49,15 +49,15 @@ echo.
 REM Change to templating directory
 cd /d "%SSD_ROOT%\src\templating"
 
-if not exist "template_capture.py" (
+if not exist "click_template_capture.py" (
     echo ERROR: Template capture script not found at:
-    echo %SSD_ROOT%\src\templating\template_capture.py
+    echo %SSD_ROOT%\src\templating\click_template_capture.py
     echo.
     pause
     exit /b 1
 )
 
-"%PYTHON_EXE%" template_capture.py
+"%PYTHON_EXE%" click_template_capture.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -72,10 +72,10 @@ echo ================================================
 echo.
 echo Next steps:
 echo  1. Check src\templating\unclassified_templates\ for captured templates
-echo  2. Move template images to templates\CAMMUS\
-echo  3. Update config.json with template filenames
-echo  4. Set "enabled": true in pre_launch_config
+echo  2. Move template PNG images to templates\CAMMUS\
+echo  3. Move click_steps.json to templates\CAMMUS\
+echo  4. Update cammus_config.json with correct settings
 echo.
-echo See CAMMUS_SETUP.md for detailed instructions.
+echo See documentation\CAMMUS_SETUP.md for detailed instructions.
 echo.
 pause
