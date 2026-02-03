@@ -13,7 +13,7 @@ import requests
 from flask import Flask, request, jsonify
 from typing import Optional
 from utils.networking import get_local_ip, register_mdns_service
-from utils.process import terminate_process, is_process_running
+from utils.process import terminate_process, is_process_running, is_running_elevated
 from utils.monitoring import get_logger, setup_logging
 from utils.data_model import MachineConfig
 from utils.setup_state import SetupState
@@ -318,6 +318,10 @@ def _start_server(config: dict):
     logger.info(f"Machine ID: {MACHINE_CONFIG.id}")
     logger.info(f"IP: {MACHINE_CONFIG.ip}")
     logger.info(f"Port: {MACHINE_CONFIG.port}")
+    if is_running_elevated():
+        logger.info("Admin privileges: YES")
+    else:
+        logger.warning("Admin privileges: NO - CAMMUS clicks may not work")
     logger.info("Registering mDNS service...")
     zeroconf, service_info = register_mdns_service(config, SERVICE_PORT)
     try:
