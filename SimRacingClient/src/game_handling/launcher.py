@@ -28,6 +28,13 @@ def execute_pre_launch_config(config: PreLaunchConfig, template_base_dir: str) -
     """
     Execute pre-launch configuration (e.g., CAMMUS software setup).
 
+    Software launch uses elevated privileges (required for CAMMUS).  The click
+    sequence is delegated to an elevated subprocess (elevated_click_worker) so
+    that the main client can stay non-elevated and pydirectinput keeps working
+    for game navigation.  If the main process is already elevated the worker is
+    invoked directly via subprocess instead of ShellExecuteEx to avoid a
+    redundant UAC prompt.
+
     Args:
         config: PreLaunchConfig containing executable path, click steps, etc.
         template_base_dir: Base directory for resolving template paths
@@ -35,69 +42,84 @@ def execute_pre_launch_config(config: PreLaunchConfig, template_base_dir: str) -
     Returns:
         True if pre-launch config completed successfully, False otherwise
     """
-    from utils.process import launch_process, is_process_running
-    from utils.click_navigator import execute_click_sequence
+    from utils.process import launch_process_elevated, is_process_running, is_running_elevated
+    import subprocess
+    import tempfile
+    import json
+    import os
     import time
 
-    # logger.info("Starting pre-launch configuration")
-
-    # Check if software needs to be launched
+    # --- Launch software if not already running (elevated) ---
     if config.executable_path and config.process_name:
         if not is_process_running(config.process_name):
-            logger.info(f"Launching {config.executable_path}")
-            launch_process(Path(config.executable_path))
-            # Give software time to start
+            logger.info(f"Launching {config.executable_path} (elevated)")
+            if not launch_process_elevated(Path(config.executable_path)):
+                logger.error(f"Failed to launch {config.executable_path} – user may have denied UAC")
+                return False
             time.sleep(3)
 
-            # Wait for window to appear and focus it
             if config.window_title:
                 if not _wait_and_focus_window(config.window_title, max_attempts=10):
                     logger.warning(f"Could not focus {config.window_title} window, continuing anyway...")
         else:
             logger.info(f"{config.process_name} is already running")
-            # Focus the window if specified
             if config.window_title:
                 _wait_and_focus_window(config.window_title, max_attempts=5)
 
-    # Execute click sequence if steps are configured
-    if config.click_steps:
-        logger.info(f"Executing {len(config.click_steps)} click steps")
-        template_dir = Path(template_base_dir) / config.template_dir
-
-        # Convert ClickStep models to simple template list
-        for i, step in enumerate(config.click_steps, 1):
-            template_path = str(template_dir / step.template)
-            logger.info(f"Click step {i}/{len(config.click_steps)}: Looking for {step.template}...")
-
-            # Import click function
-            from utils.click_navigator import click_template_if_found
-
-            # Retry loop for this step
-            clicked = False
-            for attempt in range(config.max_retries):
-                if click_template_if_found(
-                    template_path,
-                    threshold=config.template_threshold,
-                    click_delay=config.click_delay,
-                    double_click=step.double_click
-                ):
-                    logger.info(f"✓ Click step {i}/{len(config.click_steps)} completed")
-                    clicked = True
-                    break
-
-                if attempt < config.max_retries - 1:
-                    logger.debug(f"Attempt {attempt + 1}/{config.max_retries} failed, retrying...")
-                    time.sleep(config.retry_delay)
-
-            if not clicked:
-                logger.error(f"✗ Click step {i}/{len(config.click_steps)} failed after {config.max_retries} attempts")
-                return False
-
-        logger.info(f"✓ Pre-launch configuration completed successfully")
+    # --- Execute click sequence via elevated worker ---
+    if not config.click_steps:
+        logger.info("No click steps configured, skipping")
         return True
 
-    logger.info("No click steps configured, skipping")
-    return True
+    template_dir = str(Path(template_base_dir) / config.template_dir)
+    worker_script = str(Path(__file__).resolve().parent.parent / "utils" / "elevated_click_worker.py")
+
+    worker_config = {
+        "template_dir": template_dir,
+        "click_steps": [
+            {"template": step.template, "double_click": step.double_click}
+            for step in config.click_steps
+        ],
+        "threshold": config.template_threshold,
+        "max_retries": config.max_retries,
+        "retry_delay": config.retry_delay,
+        "click_delay": config.click_delay,
+    }
+
+    # Write config to a temp file so the worker can read it cleanly.
+    config_fd, config_path = tempfile.mkstemp(suffix='.json', prefix='simracing_clicks_')
+    try:
+        with os.fdopen(config_fd, 'w') as f:
+            json.dump(worker_config, f)
+
+        if is_running_elevated():
+            # Already elevated – run the worker in-process via subprocess
+            # (avoids a redundant UAC prompt).
+            logger.info(f"Executing {len(config.click_steps)} click steps (already elevated)")
+            result = subprocess.run(
+                [sys.executable, worker_script, config_path],
+                capture_output=True
+            )
+            success = result.returncode == 0
+        else:
+            # Not elevated – spawn the worker with elevation.
+            logger.info(f"Spawning elevated worker for {len(config.click_steps)} click steps")
+            success = launch_process_elevated(
+                Path(sys.executable),
+                parameters=f'"{worker_script}" "{config_path}"',
+                wait=True
+            )
+
+        if success:
+            logger.info("✓ Pre-launch click sequence completed successfully")
+        else:
+            logger.error("✗ Pre-launch click sequence failed")
+        return success
+    finally:
+        try:
+            os.unlink(config_path)
+        except OSError:
+            pass
 
 
 def launch(game_id: str, role: Role, cancel_event: Optional[threading.Event] = None,

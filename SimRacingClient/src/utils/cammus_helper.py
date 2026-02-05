@@ -5,10 +5,16 @@ Provides functions to load configuration and execute the Cammus
 software setup sequence using template-based click automation.
 """
 
+import sys
 import json
 import time
 from pathlib import Path
 from typing import Optional
+
+# When spawned as an elevated subprocess (__main__), src/ may not be on the
+# path yet.  Insert it before any local imports so they resolve correctly.
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.process import is_process_running, launch_process_elevated, is_running_elevated
 from utils.focus_window import _wait_and_focus_window
@@ -37,28 +43,18 @@ def load_cammus_config() -> Optional[dict]:
         return None
 
 
-def execute_cammus_configuration() -> tuple[bool, str]:
+def _execute_cammus_configuration_direct() -> tuple[bool, str]:
     """
-    Execute Cammus software configuration.
+    Execute Cammus configuration directly in the current process.
 
-    Launches the Cammus software (if not running), focuses its window,
-    and executes a click sequence based on template matching.
-
-    Note: This function works best when the script is running with administrator
-    privileges. If CAMMUS requires elevation, the script must also be elevated
-    to send mouse clicks to it (due to Windows UIPI restrictions).
+    This does the real work: launches Cammus if needed, focuses its window,
+    and runs the click sequence.  Must be called from an elevated context
+    (either the main process is elevated, or this module was spawned as an
+    elevated subprocess via __main__).
 
     Returns:
         Tuple of (success, message)
     """
-    # Check if running elevated - warn if not
-    if not is_running_elevated():
-        logger.warning(
-            "Script is NOT running with administrator privileges. "
-            "Mouse clicks may not work on elevated windows (CAMMUS). "
-            "Consider running the launcher as Administrator."
-        )
-
     config = load_cammus_config()
     if not config:
         return False, "Failed to load cammus_config.json"
@@ -151,3 +147,42 @@ def execute_cammus_configuration() -> tuple[bool, str]:
 
     logger.info(f"Cammus configuration completed successfully ({len(click_steps)} steps)")
     return True, f"Cammus configuration completed ({len(click_steps)} steps)"
+
+
+def execute_cammus_configuration() -> tuple[bool, str]:
+    """
+    Execute Cammus software configuration (public entry point).
+
+    If the current process is already elevated, the click sequence runs
+    directly.  Otherwise this module is re-spawned as an elevated subprocess
+    via ShellExecuteEx("runas") so that the clicks can reach the elevated
+    Cammus window (Windows UIPI requirement).  The /api/configure_cammus
+    endpoint and the orchestrator are completely unaffected — the elevation
+    is an internal implementation detail.
+
+    Returns:
+        Tuple of (success, message)
+    """
+    if is_running_elevated():
+        return _execute_cammus_configuration_direct()
+
+    # Not elevated – spawn this module as an elevated subprocess.
+    logger.info("Not elevated – spawning elevated subprocess for CAMMUS configuration")
+    script_path = str(Path(__file__).resolve())
+    success = launch_process_elevated(
+        Path(sys.executable),
+        parameters=f'"{script_path}"',
+        wait=True
+    )
+
+    if success:
+        return True, "Cammus configuration completed (via elevated subprocess)"
+    return False, "Cammus configuration failed (elevated subprocess exited with error)"
+
+
+if __name__ == "__main__":
+    # Entry point when spawned as an elevated subprocess.
+    # sys.path is already patched at the top of this file for this case.
+    success, message = _execute_cammus_configuration_direct()
+    print(message)
+    sys.exit(0 if success else 1)

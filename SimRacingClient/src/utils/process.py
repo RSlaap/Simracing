@@ -11,6 +11,7 @@ import subprocess
 import sys
 import psutil
 from pathlib import Path
+from typing import Optional
 from utils.monitoring import get_logger
 
 logger = get_logger(__name__)
@@ -83,7 +84,7 @@ def launch_process(executable_path: Path) -> subprocess.Popen:
         raise RuntimeError(f"Failed to launch: {str(e)}")
 
 
-def launch_process_elevated(executable_path: Path, wait: bool = False) -> bool:
+def launch_process_elevated(executable_path: Path, parameters: Optional[str] = None, wait: bool = False) -> bool:
     """
     Launch a process with elevated (administrator) privileges using ShellExecuteEx.
 
@@ -92,10 +93,14 @@ def launch_process_elevated(executable_path: Path, wait: bool = False) -> bool:
 
     Args:
         executable_path: Absolute path to the executable
-        wait: If True, wait for the process to exit before returning
+        parameters: Optional command-line parameters to pass to the executable
+        wait: If True, wait for the process to exit before returning.
+              When True, the return value reflects the child's exit code
+              (True if exit code is 0, False otherwise).
 
     Returns:
-        True if the process was launched successfully, False otherwise
+        True if launched successfully (wait=False), or if the process exited
+        with code 0 (wait=True).  False on launch failure or non-zero exit.
 
     Raises:
         FileNotFoundError: If executable doesn't exist
@@ -127,7 +132,7 @@ def launch_process_elevated(executable_path: Path, wait: bool = False) -> bool:
         sei.hwnd = None
         sei.lpVerb = "runas"  # Request elevation
         sei.lpFile = str(exe_path)
-        sei.lpParameters = None
+        sei.lpParameters = parameters
         sei.lpDirectory = str(exe_path.parent)
         sei.nShow = SW_SHOWNORMAL
         sei.hInstApp = None
@@ -145,7 +150,10 @@ def launch_process_elevated(executable_path: Path, wait: bool = False) -> bool:
 
         if wait and sei.hProcess:
             ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, -1)  # INFINITE
+            exit_code = wintypes.DWORD()
+            ctypes.windll.kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(exit_code))
             ctypes.windll.kernel32.CloseHandle(sei.hProcess)
+            return exit_code.value == 0
 
         return True
 
