@@ -40,7 +40,9 @@ if sys.platform == 'win32':
     MOUSEEVENTF_ABSOLUTE = 0x8000
 
     # Structure for mouse input
-    class MOUSEINPUT(ctypes.Structure):
+    # Use unique names to avoid conflicts with other ctypes INPUT definitions
+    # (e.g., pydirectinput defines its own Input class)
+    class _CLICK_NAV_MOUSEINPUT(ctypes.Structure):
         _fields_ = [
             ("dx", wintypes.LONG),
             ("dy", wintypes.LONG),
@@ -50,9 +52,9 @@ if sys.platform == 'win32':
             ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
         ]
 
-    class INPUT(ctypes.Structure):
+    class _CLICK_NAV_INPUT(ctypes.Structure):
         class _INPUT_UNION(ctypes.Union):
-            _fields_ = [("mi", MOUSEINPUT)]
+            _fields_ = [("mi", _CLICK_NAV_MOUSEINPUT)]
 
         _anonymous_ = ("_input",)
         _fields_ = [
@@ -60,9 +62,13 @@ if sys.platform == 'win32':
             ("_input", _INPUT_UNION),
         ]
 
-    SendInput = ctypes.windll.user32.SendInput
-    SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
-    SendInput.restype = wintypes.UINT
+    # Get a PRIVATE reference to SendInput and configure it separately.
+    # This avoids modifying the global ctypes.windll.user32.SendInput which
+    # would conflict with pydirectinput's own SendInput configuration.
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+    _SendInput = _user32.SendInput
+    _SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_CLICK_NAV_INPUT), ctypes.c_int]
+    _SendInput.restype = wintypes.UINT
 
     def _low_level_click(x: int, y: int, double_click: bool = False):
         """
@@ -85,7 +91,7 @@ if sys.platform == 'win32':
         norm_y = int(y * 65535 / screen_height)
 
         # Move mouse to position
-        move_input = INPUT()
+        move_input = _CLICK_NAV_INPUT()
         move_input.type = INPUT_MOUSE
         move_input.mi.dx = norm_x
         move_input.mi.dy = norm_y
@@ -94,14 +100,14 @@ if sys.platform == 'win32':
         move_input.mi.time = 0
         move_input.mi.dwExtraInfo = None
 
-        SendInput(1, ctypes.byref(move_input), ctypes.sizeof(INPUT))
+        _SendInput(1, ctypes.byref(move_input), ctypes.sizeof(_CLICK_NAV_INPUT))
         time.sleep(0.05)  # Small delay after move
 
         # Perform click(s)
         clicks = 2 if double_click else 1
         for _ in range(clicks):
             # Mouse down
-            down_input = INPUT()
+            down_input = _CLICK_NAV_INPUT()
             down_input.type = INPUT_MOUSE
             down_input.mi.dx = norm_x
             down_input.mi.dy = norm_y
@@ -110,11 +116,11 @@ if sys.platform == 'win32':
             down_input.mi.time = 0
             down_input.mi.dwExtraInfo = None
 
-            SendInput(1, ctypes.byref(down_input), ctypes.sizeof(INPUT))
+            _SendInput(1, ctypes.byref(down_input), ctypes.sizeof(_CLICK_NAV_INPUT))
             time.sleep(0.02)
 
             # Mouse up
-            up_input = INPUT()
+            up_input = _CLICK_NAV_INPUT()
             up_input.type = INPUT_MOUSE
             up_input.mi.dx = norm_x
             up_input.mi.dy = norm_y
@@ -123,7 +129,7 @@ if sys.platform == 'win32':
             up_input.mi.time = 0
             up_input.mi.dwExtraInfo = None
 
-            SendInput(1, ctypes.byref(up_input), ctypes.sizeof(INPUT))
+            _SendInput(1, ctypes.byref(up_input), ctypes.sizeof(_CLICK_NAV_INPUT))
 
             if double_click and _ == 0:
                 time.sleep(0.05)  # Small delay between double-click
